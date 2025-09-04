@@ -50,40 +50,37 @@ class CompanyGPTChat {
       viewChat: document.getElementById("view-chat"),
       viewSettings: document.getElementById("view-settings"),
 
-      // Tabs
-      tabChat: document.getElementById("tab-chat"),
-      tabSettings: document.getElementById("tab-settings"),
+      // Icon buttons
+      btnChat: document.getElementById("btn-chat"),
+      btnSettings: document.getElementById("btn-settings"),
+      btnMenu: document.getElementById("btn-menu"),
 
       // Chat elements
       messagesContainer: document.getElementById("chat-messages"),
       messageInput: document.getElementById("message-input"),
       sendButton: document.getElementById("send-button"),
 
-      // Status elements
-      pageContext: document.getElementById("page-context"),
-      authStatus: document.getElementById("auth-status"),
-      currentDomain: document.getElementById("current-domain"),
-
-      // Buttons
-      btnNewChat: document.getElementById("btn-new-chat"),
-      btnSettings: document.getElementById("btn-settings"),
-
       // Settings
-      modeContext: document.getElementById("mode-context"),
+      currentDomain: document.getElementById("current-domain"),
+      useContext: document.getElementById("use-context"),
     };
   }
 
   setupEventListeners() {
-    // Tab switching
-    this.elements.tabChat?.addEventListener("click", () =>
-      this.showView("chat")
-    );
-    this.elements.tabSettings?.addEventListener("click", () =>
-      this.showView("settings")
-    );
-    this.elements.btnSettings?.addEventListener("click", () =>
-      this.showView("settings")
-    );
+    // Icon button navigation
+    this.elements.btnChat?.addEventListener("click", () => {
+      this.showView("chat");
+      this.setActiveButton("btnChat");
+    });
+
+    this.elements.btnSettings?.addEventListener("click", () => {
+      this.showView("settings");
+      this.setActiveButton("btnSettings");
+    });
+
+    this.elements.btnMenu?.addEventListener("click", () => {
+      this.showMenu();
+    });
 
     // Send message
     this.elements.sendButton?.addEventListener("click", () =>
@@ -101,13 +98,8 @@ class CompanyGPTChat {
     // Auto-resize textarea
     this.elements.messageInput?.addEventListener("input", (e) => {
       e.target.style.height = "auto";
-      e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+      e.target.style.height = Math.min(e.target.scrollHeight, 100) + "px";
     });
-
-    // New chat
-    this.elements.btnNewChat?.addEventListener("click", () =>
-      this.startNewChat()
-    );
 
     // Listen for messages from background
     chrome.runtime.onMessage.addListener((message) => {
@@ -120,19 +112,55 @@ class CompanyGPTChat {
     });
   }
 
+  setActiveButton(buttonName) {
+    // Remove active class from all buttons
+    this.elements.btnChat?.classList.remove("active");
+    this.elements.btnSettings?.classList.remove("active");
+
+    // Add active class to selected button
+    this.elements[buttonName]?.classList.add("active");
+  }
+
   showView(which) {
     const isChat = which === "chat";
 
-    this.elements.viewChat?.classList.toggle("active", isChat);
-    this.elements.viewSettings?.classList.toggle("active", !isChat);
-    this.elements.tabChat?.classList.toggle("active", isChat);
-    this.elements.tabSettings?.classList.toggle("active", !isChat);
+    if (isChat) {
+      this.elements.viewChat?.style.removeProperty("display");
+      this.elements.viewSettings?.style.setProperty("display", "none");
+    } else {
+      this.elements.viewChat?.style.setProperty("display", "none");
+      this.elements.viewSettings?.style.removeProperty("display");
+    }
+  }
+
+  showMenu() {
+    // Simple menu options
+    const options = ["Neuer Chat", "Chat exportieren", "Über CompanyGPT"];
+
+    const choice = prompt(
+      "Menü:\n" + options.map((o, i) => `${i + 1}. ${o}`).join("\n")
+    );
+
+    if (choice === "1") {
+      this.startNewChat();
+    }
+    // Add more menu actions as needed
   }
 
   async checkAuth() {
     console.log("[App] Checking authentication...");
 
     try {
+      // First try using AuthService if available
+      if (window.AuthService) {
+        const isAuth = await window.AuthService.checkAuth();
+        const domain = window.AuthService.getActiveDomain?.();
+
+        this.updateAuthStatus(isAuth, domain);
+        return isAuth;
+      }
+
+      // Fallback to message-based auth check
       const response = await chrome.runtime.sendMessage({
         type: "CHECK_AUTH",
       });
@@ -140,32 +168,154 @@ class CompanyGPTChat {
       if (response?.success && response?.isAuthenticated) {
         this.updateAuthStatus(true, response.domain);
         console.log("[App] User authenticated");
+        return true;
       } else {
         this.updateAuthStatus(false);
         console.log("[App] User not authenticated");
+        return false;
       }
     } catch (error) {
       console.error("[App] Auth check failed:", error);
       this.updateAuthStatus(false);
+      return false;
+    }
+  }
+
+  showLoginOverlay() {
+    console.log("[App] Showing login overlay");
+
+    // Show overlay
+    if (this.elements.loginOverlay) {
+      this.elements.loginOverlay.style.display = "flex";
+    }
+
+    // Blur background messages
+    if (this.elements.messagesContainer) {
+      this.elements.messagesContainer.classList.add("blurred");
+    }
+
+    // Disable input
+    this.updateAuthStatus(false);
+  }
+
+  hideLoginOverlay() {
+    console.log("[App] Hiding login overlay");
+
+    // Hide overlay
+    if (this.elements.loginOverlay) {
+      this.elements.loginOverlay.style.display = "none";
+    }
+
+    // Unblur messages
+    if (this.elements.messagesContainer) {
+      this.elements.messagesContainer.classList.remove("blurred");
+    }
+  }
+
+  async handleLogin() {
+    console.log("[App] Opening login page");
+
+    try {
+      let loginUrl = "";
+
+      // Try to build login URL using CONFIG
+      if (window.CONFIG?.buildLoginUrl) {
+        loginUrl = window.CONFIG.buildLoginUrl();
+      }
+
+      // If no URL, try to detect domain
+      if (!loginUrl && window.CONFIG?.DOMAIN) {
+        loginUrl = `https://${window.CONFIG.DOMAIN}.506.ai/de/login`;
+      }
+
+      // Fallback URL if no domain detected
+      if (!loginUrl) {
+        // Ask user for their company subdomain
+        const subdomain = prompt(
+          'Bitte gib deine Firmen-Subdomain ein (z.B. "firma" für firma.506.ai):'
+        );
+
+        if (subdomain) {
+          loginUrl = `https://${subdomain}.506.ai/de/login`;
+        } else {
+          return;
+        }
+      }
+
+      // Open login in new tab
+      await chrome.tabs.create({ url: loginUrl });
+
+      // Show check button and hint
+      if (this.elements.btnLogin) {
+        this.elements.btnLogin.style.display = "none";
+      }
+      if (this.elements.btnCheckAuth) {
+        this.elements.btnCheckAuth.style.display = "block";
+      }
+      if (this.elements.loginHint) {
+        this.elements.loginHint.style.display = "flex";
+      }
+    } catch (error) {
+      console.error("[App] Failed to open login:", error);
+      this.showError("Fehler beim Öffnen der Anmeldeseite");
+    }
+  }
+
+  async recheckAuth() {
+    console.log("[App] Rechecking authentication...");
+
+    // Clear any cached auth state
+    if (window.AuthService?.clearCache) {
+      window.AuthService.clearCache();
+    }
+
+    const isAuthenticated = await this.checkAuth();
+
+    if (isAuthenticated) {
+      this.hideLoginOverlay();
+
+      // Initialize chat if not already done
+      if (!this.chatController?.isInitialized) {
+        await this.loadPageContext();
+        await this.chatController.initialize();
+      }
+
+      // Show success message
+      this.elements.messagesContainer.innerHTML = `
+        <div class="message assistant">
+          Erfolgreich angemeldet! Ich kann dir jetzt bei Fragen zur aktuellen Seite helfen. ✨
+        </div>
+      `;
+    } else {
+      // Reset buttons if still not authenticated
+      if (this.elements.btnLogin) {
+        this.elements.btnLogin.style.display = "block";
+      }
+      if (this.elements.btnCheckAuth) {
+        this.elements.btnCheckAuth.style.display = "none";
+      }
+      if (this.elements.loginHint) {
+        this.elements.loginHint.style.display = "none";
+      }
+
+      alert(
+        "Noch nicht angemeldet. Bitte melde dich zuerst bei CompanyGPT an."
+      );
     }
   }
 
   updateAuthStatus(isAuthenticated, domain = null) {
-    if (this.elements.authStatus) {
-      this.elements.authStatus.innerHTML = isAuthenticated
-        ? "🟢 Verbunden"
-        : "🔴 Nicht verbunden";
-    }
-
     if (this.elements.currentDomain && domain) {
       this.elements.currentDomain.textContent = domain + ".506.ai";
+    } else if (this.elements.currentDomain) {
+      this.elements.currentDomain.textContent = "Nicht verbunden";
     }
 
     // Enable/disable chat based on auth
     if (this.elements.messageInput) {
       this.elements.messageInput.disabled = !isAuthenticated;
       this.elements.messageInput.placeholder = isAuthenticated
-        ? "Wie kann ich dir heute helfen?"
+        ? "Nachricht an CompanyGPT"
         : "Bitte melde dich erst bei CompanyGPT an";
     }
 
@@ -196,15 +346,8 @@ class CompanyGPTChat {
   }
 
   updateContextDisplay() {
-    if (this.elements.pageContext && this.currentPageContext) {
-      const { title, url } = this.currentPageContext;
-      const contextValue =
-        this.elements.pageContext.querySelector(".context-value");
-      if (contextValue) {
-        contextValue.textContent = title || "Aktuelle Seite";
-        contextValue.title = url;
-      }
-    }
+    // Context is now handled internally, no visual indicator needed
+    // Could add a subtle indicator in the input area if needed
   }
 
   async sendMessage() {
@@ -243,7 +386,7 @@ class CompanyGPTChat {
 
   addMessage(content, role = "assistant") {
     const messageEl = document.createElement("div");
-    messageEl.className = `msg ${role}`;
+    messageEl.className = `message ${role}`;
     messageEl.textContent = content;
 
     this.elements.messagesContainer?.appendChild(messageEl);
@@ -271,8 +414,9 @@ class CompanyGPTChat {
   }
 
   scrollToBottom() {
-    if (this.elements.viewChat) {
-      this.elements.viewChat.scrollTop = this.elements.viewChat.scrollHeight;
+    if (this.elements.messagesContainer) {
+      this.elements.messagesContainer.scrollTop =
+        this.elements.messagesContainer.scrollHeight;
     }
   }
 
@@ -282,8 +426,8 @@ class CompanyGPTChat {
     ) {
       // Clear all messages except system message
       this.elements.messagesContainer.innerHTML = `
-        <div class="msg system">
-          Neuer Chat gestartet. Wie kann ich dir helfen? ✨
+        <div class="message system">
+          Neuer Chat gestartet. Ich kann dir bei Fragen zur aktuellen Seite helfen. ✨
         </div>
       `;
       this.chatController?.clearChat();
