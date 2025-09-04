@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CompanyGPT Chat</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <section
+      class="panel"
+      role="dialog"
+      aria-label="CompanyGPT Seitenassistent"
+    >
+      <!-- Header -->
+      <header class="topbar">
+        <div class="brand">
+          <!-- Custom 506-style spark icon -->
+          <svg
+            aria-hidden="true"
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            class="brand-icon"
+          >
+            <g
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+            >
+              <path d="M12 4.5v15" />
+              <path d="M5.2 8.2l13.6 7.6" />
+              <path d="M5.2 15.8l13.6-7.6" />
+            </g>
+            <circle cx="12" cy="12" r="2.5" fill="currentColor" />
+          </svg>
+          <span>CompanyGPT</span>
+          <span class="badge">Beta</span>
+          <div class="tabs" style="margin-left: 12px">
+            <button
+              id="tab-chat"
+              class="tab active"
+              aria-controls="view-chat"
+              aria-selected="true"
+            >
+              Chat
+            </button>
+            <button
+              id="tab-settings"
+              class="tab"
+              aria-controls="view-settings"
+              aria-selected="false"
+            >
+              Einstellungen
+            </button>
+          </div>
+        </div>
+        <div class="actions" aria-label="Panel-Aktionen">
+          <span
+            id="auth-status"
+            class="small"
+            style="margin-right: 8px; color: var(--muted)"
+            >⚫ Checking...</span
+          >
+          <button class="iconbtn" id="btn-new-chat" title="Neuer Chat">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              fill="none"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
+          <button class="iconbtn" id="btn-settings" title="Einstellungen">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              fill="none"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06A2 2 0 1 1 7.04 2.2l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V1a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.08a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .66.39 1.26 1 1.51H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+              />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Views -->
+      <main class="content">
+        <!-- Chat View -->
+        <div
+          id="view-chat"
+          class="view active"
+          role="region"
+          aria-live="polite"
+        >
+          <div id="chat-messages">
+            <!-- Messages will be inserted here -->
+            <div class="msg system">
+              Hallo! Ich kann Fragen zur aktuellen Seite beantworten. Beschreibe
+              einfach, was du suchst. ✨
+            </div>
+          </div>
+        </div>
+
+        <!-- Settings View -->
+        <div id="view-settings" class="view" role="region">
+          <h3 style="margin: 0 0 16px 0">Einstellungen</h3>
+
+          <div class="settings-card">
+            <div>
+              <div style="font-weight: 600">Arbeitsmodus</div>
+              <div class="small">
+                Seiteninhalte analysieren und Fragen beantworten
+              </div>
+            </div>
+            <label class="row small" style="gap: 6px; cursor: pointer">
+              <input id="mode-context" type="checkbox" checked /> Kontext
+              verwenden
+            </label>
+          </div>
+
+          <div class="settings-card">
+            <div>
+              <div style="font-weight: 600">Domain</div>
+              <div class="small" id="current-domain">Nicht verbunden</div>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div>
+              <div style="font-weight: 600">Version</div>
+              <div class="small">CompanyGPT Chat Extension v1.0.0</div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- Composer -->
+      <footer class="composer">
+        <div class="context-indicator" id="page-context">
+          <span class="context-label">Kontext:</span>
+          <span class="context-value">Aktuelle Seite</span>
+        </div>
+        <div class="input-group">
+          <div class="inputwrap">
+            <textarea
+              id="message-input"
+              class="input"
+              placeholder="Wie kann ich dir heute helfen?"
+              aria-label="Nachricht an CompanyGPT"
+              rows="1"
+            ></textarea>
+            <button id="send-button" class="sendbtn" title="Senden">
+              <svg
+                aria-hidden="true"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+              >
+                <g
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.2"
+                  stroke-linecap="round"
+                >
+                  <path d="M5 12h14" />
+                  <path d="M12 5l7 7-7 7" />
+                </g>
+              </svg>
+            </button>
+          </div>
+          <div class="helperhint">Drücke ⏎ zum Senden</div>
+        </div>
+      </footer>
+    </section>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
