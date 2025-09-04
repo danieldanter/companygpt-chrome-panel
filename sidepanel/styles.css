@@ -817,44 +817,47 @@ body {
 
 /* Add these styles to your sidepanel/styles.css */
 
-/* Permission-style notification bubble */
-.permission {
-  margin-top: 16px;
+/* Flat context notification (no double bubble) */
+.context-notification {
+  margin: 12px;
   padding: 14px;
   border-radius: 14px;
-  border: 1px dashed rgba(2, 132, 199, 0.35); /* brand_600 @ 35% */
-  background: linear-gradient(
-    180deg,
-    rgba(14, 165, 233, 0.06),
-    transparent
-  ); /* brand_500 tint */
+  border: 1px dashed rgba(107, 114, 128, 0.3); /* Gray dashed border */
+  background: #f9fafb; /* Light gray background */
 }
 
-.permission-title {
+@media (prefers-color-scheme: dark) {
+  .context-notification {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(156, 163, 175, 0.3);
+  }
+}
+
+.context-notification .permission-title {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 6px;
 }
 
-.small {
+.context-notification .small {
   font-size: 12px;
   color: var(--text-muted);
   margin-bottom: 12px;
 }
 
-.permission-buttons {
+.context-notification .permission-buttons {
   display: flex;
   gap: 8px;
   margin-top: 12px;
 }
 
-/* Tab-style buttons */
-.tab {
+/* Tab buttons stay the same */
+.context-notification .tab {
   padding: 8px 12px;
   border-radius: 12px;
   border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.02);
+  background: white;
   color: var(--text-secondary);
   font-weight: 600;
   font-size: 13px;
@@ -863,18 +866,24 @@ body {
   flex: 1;
 }
 
-.tab:hover {
+@media (prefers-color-scheme: dark) {
+  .context-notification .tab {
+    background: var(--bg-secondary);
+  }
+}
+
+.context-notification .tab:hover {
   background: rgba(14, 165, 233, 0.08);
   border-color: rgba(14, 165, 233, 0.35);
   color: var(--blue-600);
 }
 
-/* Context divider (subtle) */
+/* Context divider stays minimal */
 .context-divider {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 12px 0;
+  margin: 12px;
   position: relative;
 }
 
@@ -893,17 +902,7 @@ body {
   background: var(--bg-primary);
 }
 
-/* Dark mode adjustments */
 @media (prefers-color-scheme: dark) {
-  .permission {
-    border-color: rgba(56, 189, 248, 0.45); /* brighter blue */
-    background: linear-gradient(
-      180deg,
-      rgba(56, 189, 248, 0.1),
-      rgba(56, 189, 248, 0.05)
-    );
-  }
-
   .tab {
     background: rgba(255, 255, 255, 0.02);
     border-color: var(--border);

@@ -173,6 +173,39 @@ class CompanyGPTChat {
         this.handleLogin();
       }
     });
+
+    // Better tab change detection
+    let lastActiveTabUrl = null;
+
+    // Check for tab changes every time user focuses the side panel
+    document.addEventListener("visibilitychange", async () => {
+      if (!document.hidden && this.isInitialized) {
+        const [tab] = await chrome.tabs.query({
+          active: true,
+          currentWindow: true,
+        });
+        if (tab && tab.url !== lastActiveTabUrl) {
+          lastActiveTabUrl = tab.url;
+          await this.handleTabChange(tab.id);
+        }
+      }
+    });
+
+    // Also listen for tab activation
+    chrome.tabs.onActivated.addListener(async (activeInfo) => {
+      if (this.isInitialized) {
+        setTimeout(async () => {
+          const [tab] = await chrome.tabs.query({
+            active: true,
+            currentWindow: true,
+          });
+          if (tab && tab.url !== lastActiveTabUrl) {
+            lastActiveTabUrl = tab.url;
+            await this.handleTabChange(activeInfo.tabId);
+          }
+        }, 100);
+      }
+    });
   }
 
   setActiveButton(buttonName) {
@@ -683,35 +716,32 @@ class CompanyGPTChat {
   // Replace all context notification methods in app.js with this clean version
 
   /**
-   * Show clean context notification matching permission bubble style
+   * Show flat context notification (no double bubble)
    */
   showContextChangeNotification(currentContext, previousHistory) {
     console.log("[App] Showing context change notification");
 
-    // Create clean notification matching permission style
+    // Create flat notification - NOT wrapped in message bubble
     const notificationEl = document.createElement("div");
-    notificationEl.className = "message assistant";
+    notificationEl.className = "context-notification";
     notificationEl.innerHTML = `
-      <div class="permission">
-        <div class="permission-title">Neuer Kontext erkannt</div>
-        <div class="small">
-          ${this.truncateUrl(currentContext?.url, 45)}
-        </div>
-        <div class="permission-buttons">
-          <button class="tab">Neuer Chat</button>
-          <button class="tab">Chat fortsetzen</button>
-        </div>
+      <div class="permission-title">Neuer Kontext erkannt</div>
+      <div class="small">
+        ${this.truncateUrl(currentContext?.url, 45)}
+      </div>
+      <div class="permission-buttons">
+        <button class="tab">Neuer Chat</button>
+        <button class="tab">Chat fortsetzen</button>
       </div>
     `;
 
-    // Add to messages container
+    // Add directly to messages container (no wrapper)
     this.elements.messagesContainer?.appendChild(notificationEl);
     this.scrollToBottom();
 
     // Add event listeners
     const buttons = notificationEl.querySelectorAll(".tab");
 
-    // Neuer Chat button
     buttons[0]?.addEventListener("click", async () => {
       console.log("[App] User chose to start new chat");
       await this.clearAndStartNewChat();
@@ -719,13 +749,11 @@ class CompanyGPTChat {
       this.addMessage("Chat wurde zurückgesetzt.", "assistant");
     });
 
-    // Chat fortsetzen button
     buttons[1]?.addEventListener("click", async () => {
       console.log("[App] User chose to continue chat");
       notificationEl.remove();
       this.restoreChatHistory(previousHistory);
 
-      // Add subtle divider
       const divider = document.createElement("div");
       divider.className = "context-divider";
       divider.innerHTML = `<span>${this.truncateUrl(
@@ -737,28 +765,25 @@ class CompanyGPTChat {
   }
 
   /**
-   * Show context notification when switching tabs during active chat
+   * Show context notification when switching tabs
    */
   showCompactContextNotification() {
-    // Don't show if already showing
-    if (document.querySelector(".context-notification-active")) {
+    if (document.querySelector(".context-notification")) {
       return;
     }
 
     const context = this.currentPageContext;
 
     const notificationEl = document.createElement("div");
-    notificationEl.className = "message assistant context-notification-active";
+    notificationEl.className = "context-notification";
     notificationEl.innerHTML = `
-      <div class="permission">
-        <div class="permission-title">Neuer Kontext erkannt</div>
-        <div class="small">
-          ${this.truncateUrl(context?.url, 45)}
-        </div>
-        <div class="permission-buttons">
-          <button class="tab" id="btn-new">Neuer Chat</button>
-          <button class="tab" id="btn-continue">Chat fortsetzen</button>
-        </div>
+      <div class="permission-title">Neuer Kontext erkannt</div>
+      <div class="small">
+        ${this.truncateUrl(context?.url, 45)}
+      </div>
+      <div class="permission-buttons">
+        <button class="tab" id="btn-new">Neuer Chat</button>
+        <button class="tab" id="btn-continue">Chat fortsetzen</button>
       </div>
     `;
 
@@ -782,12 +807,10 @@ class CompanyGPTChat {
     btnContinue?.addEventListener("click", async () => {
       notificationEl.remove();
 
-      // Add subtle divider
       const divider = document.createElement("div");
       divider.className = "context-divider";
       divider.innerHTML = `<span>${this.truncateUrl(context?.url, 30)}</span>`;
       this.elements.messagesContainer?.appendChild(divider);
-      this.scrollToBottom();
 
       await chrome.storage.local.set({
         lastSessionUrl: context.url,
@@ -1131,21 +1154,23 @@ class CompanyGPTChat {
   async handleTabChange(tabId) {
     console.log("[App] Tab changed:", tabId);
 
-    // Don't check during initialization
     if (!this.isInitialized || !this.chatController?.isInitialized) {
       return;
     }
 
-    // Get the new tab context
-    const previousUrl = this.currentPageContext?.url;
+    const previousUrl = this.lastKnownUrl;
     await this.loadPageContext();
     const newUrl = this.currentPageContext?.url;
 
-    // Only check if we have messages and URL actually changed
-    if (this.chatController?.messages?.length > 0 && previousUrl !== newUrl) {
+    // Check if we have messages and URL changed
+    if (
+      this.chatController?.messages?.length > 0 &&
+      previousUrl &&
+      newUrl &&
+      previousUrl !== newUrl
+    ) {
       console.log("[App] URL changed from", previousUrl, "to", newUrl);
 
-      // Check if this is a significant context change
       const contextChanged = this.hasContextChanged(
         newUrl,
         this.extractDomain(newUrl),
@@ -1154,10 +1179,12 @@ class CompanyGPTChat {
       );
 
       if (contextChanged) {
-        console.log("[App] Significant context change detected");
-        // Show compact notification
+        console.log("[App] Context change detected, showing notification");
         this.showCompactContextNotification();
+        this.lastKnownUrl = newUrl;
       }
+    } else if (!this.lastKnownUrl) {
+      this.lastKnownUrl = newUrl;
     }
   }
 
