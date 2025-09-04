@@ -494,3 +494,423 @@ body {
 .settings-container::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
+
+.domain-status {
+  margin: 12px 0;
+  padding: 8px;
+  background: rgba(14, 165, 233, 0.1);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--blue-600);
+}
+
+.domain-input-group {
+  margin: 16px 0;
+  text-align: left;
+}
+
+.domain-input-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.input-with-suffix {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+
+.input-with-suffix:focus-within {
+  border-color: var(--blue-500);
+}
+
+.input-with-suffix input {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.input-with-suffix .suffix {
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  font-size: 14px;
+  border-left: 1px solid var(--border);
+}
+
+.help-text {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Add these styles to your sidepanel/styles.css */
+
+/* Context Change Dialog */
+.context-change-dialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+}
+
+.dialog-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease;
+}
+
+.dialog-content {
+  background: var(--bg-primary);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  animation: slideUp 0.3s ease;
+}
+
+.dialog-content h3 {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+.context-info {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 12px 0;
+}
+
+.new-context {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.context-info strong {
+  color: var(--text-primary);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.context-info small {
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.dialog-buttons {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.dialog-buttons button {
+  flex: 1;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: none;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: var(--blue-600);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: var(--blue-500);
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+  background: var(--hover-bg);
+}
+
+/* System messages */
+.message.system {
+  background: rgba(14, 165, 233, 0.05);
+  border-left: 3px solid var(--blue-500);
+  color: var(--text-secondary);
+  font-size: 13px;
+  padding: 8px 12px;
+  margin: 8px 0;
+}
+
+.system-icon {
+  margin-right: 4px;
+}
+
+/* Animations */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Add these styles to your sidepanel/styles.css */
+
+/* Context Change Request (inline notification) */
+.context-change-request {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.context-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.context-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.context-text strong {
+  color: var(--text-primary);
+  display: block;
+  margin: 4px 0;
+}
+
+.context-url {
+  color: var(--text-muted);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.context-info {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 8px 0;
+}
+
+.context-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.context-buttons button {
+  flex: 1;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: white;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-new-chat {
+  background: var(--blue-600);
+  color: white;
+  border-color: var(--blue-600);
+}
+
+.btn-new-chat:hover {
+  background: var(--blue-500);
+  border-color: var(--blue-500);
+  transform: translateY(-1px);
+}
+
+.btn-continue {
+  background: white;
+  color: var(--text-primary);
+}
+
+.btn-continue:hover {
+  background: #f0f9ff;
+  border-color: var(--blue-500);
+}
+
+/* Context change divider */
+.context-change-info {
+  margin: 12px 0;
+  position: relative;
+}
+
+.context-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 0 12px;
+}
+
+.context-divider::before,
+.context-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.context-divider span {
+  padding: 0 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-primary);
+  white-space: nowrap;
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+  .context-buttons button {
+    background: var(--bg-secondary);
+    border-color: var(--border);
+  }
+
+  .btn-new-chat {
+    background: var(--blue-600);
+    border-color: var(--blue-600);
+  }
+
+  .btn-continue:hover {
+    background: rgba(14, 165, 233, 0.1);
+  }
+
+  .context-divider span {
+    background: var(--bg-primary);
+  }
+}
+
+/* Add these styles to your sidepanel/styles.css */
+
+/* Permission-style notification bubble */
+.permission {
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px dashed rgba(2, 132, 199, 0.35); /* brand_600 @ 35% */
+  background: linear-gradient(
+    180deg,
+    rgba(14, 165, 233, 0.06),
+    transparent
+  ); /* brand_500 tint */
+}
+
+.permission-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.small {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.permission-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* Tab-style buttons */
+.tab {
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.02);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex: 1;
+}
+
+.tab:hover {
+  background: rgba(14, 165, 233, 0.08);
+  border-color: rgba(14, 165, 233, 0.35);
+  color: var(--blue-600);
+}
+
+/* Context divider (subtle) */
+.context-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 12px 0;
+  position: relative;
+}
+
+.context-divider::before,
+.context-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.context-divider span {
+  padding: 0 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-primary);
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+  .permission {
+    border-color: rgba(56, 189, 248, 0.45); /* brighter blue */
+    background: linear-gradient(
+      180deg,
+      rgba(56, 189, 248, 0.1),
+      rgba(56, 189, 248, 0.05)
+    );
+  }
+
+  .tab {
+    background: rgba(255, 255, 255, 0.02);
+    border-color: var(--border);
+  }
+
+  .tab:hover {
+    background: rgba(56, 189, 248, 0.12);
+    border-color: rgba(56, 189, 248, 0.45);
+  }
+}

@@ -135,6 +135,77 @@
           </button>
         </div>
       </footer>
+
+      <!-- Login Overlay -->
+      <div class="login-overlay" id="login-overlay" style="display: none">
+        <div class="login-card">
+          <!-- CompanyGPT Logo/Icon -->
+          <div class="login-icon">
+            <svg
+              width="48"
+              height="48"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"
+              />
+            </svg>
+          </div>
+
+          <h2>Anmeldung erforderlich</h2>
+          <p>Bitte melde dich bei CompanyGPT an, um den Chat zu nutzen.</p>
+
+          <!-- Domain detection status -->
+          <div class="domain-status" id="domain-status" style="display: none">
+            <small>Domain erkannt: <span id="detected-domain"></span></small>
+          </div>
+
+          <!-- Manual domain input (shown when no domain detected) -->
+          <div
+            class="domain-input-group"
+            id="domain-input-group"
+            style="display: none"
+          >
+            <label for="domain-input">Firmen-Subdomain eingeben:</label>
+            <div class="input-with-suffix">
+              <input
+                type="text"
+                id="domain-input"
+                placeholder="firma"
+                pattern="[a-z0-9-]+"
+              />
+              <span class="suffix">.506.ai</span>
+            </div>
+            <small class="help-text">z.B. "firma" für firma.506.ai</small>
+          </div>
+
+          <!-- Login button -->
+          <button class="btn-login" id="btn-login">
+            Bei CompanyGPT anmelden
+          </button>
+
+          <!-- Check auth button (hidden initially) -->
+          <button
+            class="btn-check-auth"
+            id="btn-check-auth"
+            style="display: none"
+          >
+            Anmeldung prüfen
+          </button>
+
+          <!-- Login hint (shown after login button clicked) -->
+          <div class="login-hint" id="login-hint" style="display: none">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="12" cy="12" r="10" opacity="0.3" />
+              <path d="M12 7v5l3 3" />
+            </svg>
+            <span>Anmeldung läuft im neuen Tab...</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Load shared services first -->

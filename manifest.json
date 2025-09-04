@@ -16,8 +16,7 @@
   "host_permissions": ["https://*.506.ai/*", "<all_urls>"],
 
   "background": {
-    "service_worker": "background/service-worker.js",
-    "type": "module"
+    "service_worker": "background/service-worker.js"
   },
 
   "side_panel": {
