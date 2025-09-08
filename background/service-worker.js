@@ -1,6 +1,6 @@
 // background/service-worker.js
 // Import shared config
-importScripts("../shared/config.js");
+//importScripts("../shared/config.js");
 
 // Debug flag
 const DEBUG = true;
