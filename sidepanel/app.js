@@ -379,7 +379,7 @@ class CompanyGPTChat {
       // Icon buttons
       btnChat: document.getElementById("btn-chat"),
       btnSettings: document.getElementById("btn-settings"),
-      btnClose: document.getElementById("btn-close"),
+      btnClearChat: document.getElementById("btn-clear-chat"),
 
       // Chat elements
       messagesContainer: document.getElementById("chat-messages"),
@@ -423,8 +423,8 @@ class CompanyGPTChat {
       this.setActiveButton("btnSettings");
     });
 
-    this.elements.btnClose?.addEventListener("click", () => {
-      window.close();
+    this.elements.btnClearChat?.addEventListener("click", () => {
+      this.confirmClearChat();
     });
 
     // Send message
@@ -514,6 +514,45 @@ class CompanyGPTChat {
         }, 100);
       }
     });
+  }
+
+  // Confirm before clearing chat
+  confirmClearChat() {
+    if (
+      confirm(
+        "Chat-Verlauf löschen? Diese Aktion kann nicht rückgängig gemacht werden."
+      )
+    ) {
+      this.clearChatHistory();
+    }
+  }
+
+  // Clear chat history
+  async clearChatHistory() {
+    try {
+      // Clear storage
+      await chrome.storage.local.remove(["chatHistory", "chatSessionId"]);
+
+      // Clear the UI
+      if (this.elements.messagesContainer) {
+        this.elements.messagesContainer.innerHTML = `
+          <div class="message assistant">
+            Chat-Verlauf wurde gelöscht. Neuer Chat gestartet! ✨
+          </div>
+        `;
+      }
+
+      // Reset chat controller
+      if (this.chatController) {
+        this.chatController.messages = [];
+        this.chatController.sessionId = null;
+      }
+
+      console.log("[App] Chat history cleared");
+    } catch (error) {
+      console.error("[App] Failed to clear chat history:", error);
+      this.showError("Fehler beim Löschen des Chat-Verlaufs");
+    }
   }
 
   setActiveButton(buttonName) {
@@ -782,6 +821,14 @@ class CompanyGPTChat {
             .replace(/^\./, "")
             .replace(".506.ai", "");
 
+          // IMPORTANT: Update AuthService with the domain info
+          if (window.AuthService && window.AuthService._state) {
+            window.AuthService._state.cache.activeDomain = domain;
+            window.AuthService._state.cache.isAuthenticated = true;
+            window.AuthService._state.cache.lastCheck = Date.now();
+            console.log("[App] Updated AuthService with domain:", domain);
+          }
+
           // Update auth status
           this.updateAuthStatus(true, domain);
 
@@ -797,47 +844,16 @@ class CompanyGPTChat {
   }
 
   // Resilient auth check
+  // Resilient auth check
   async checkAuth() {
     console.log("[App] Checking authentication...]");
 
     try {
-      let isAuth = false;
-      let domain = null;
+      // Just use AuthService - it should handle everything
+      const isAuth = await window.AuthService.checkAuth(true); // Force refresh
+      const domain = window.AuthService.getActiveDomain();
 
-      // First try direct cookie check
-      const hasCookie = await this.checkCookieDirectly();
-
-      if (hasCookie) {
-        isAuth = true;
-
-        // Get domain from cookies
-        const cookies = await chrome.cookies.getAll({
-          domain: ".506.ai",
-          name: "__Secure-next-auth.session-token",
-        });
-
-        if (cookies.length > 0) {
-          domain = cookies[0].domain.replace(/^\./, "").replace(".506.ai", "");
-        }
-      } else if (window.AuthService) {
-        // Fall back to AuthService
-        isAuth = await window.AuthService.checkAuth();
-        domain = window.AuthService.getActiveDomain?.();
-      } else {
-        // Final fallback to message-based auth check
-        try {
-          const response = await chrome.runtime.sendMessage({
-            type: "CHECK_AUTH",
-          });
-
-          if (response?.success && response?.isAuthenticated) {
-            isAuth = true;
-            domain = response.domain;
-          }
-        } catch (msgError) {
-          console.warn("[App] Message-based auth check failed:", msgError);
-        }
-      }
+      console.log("[App] AuthService check result:", isAuth, "Domain:", domain);
 
       this.updateAuthStatus(isAuth, domain);
 
@@ -851,6 +867,10 @@ class CompanyGPTChat {
       }
 
       console.log("[App] Auth result:", isAuth, "Domain:", domain);
+      console.log(
+        "[App] AuthService domain:",
+        window.AuthService?.getActiveDomain()
+      );
       return isAuth;
     } catch (error) {
       console.error("[App] Auth check failed:", error);

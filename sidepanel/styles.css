@@ -1083,3 +1083,14 @@ body {
     color: var(--blue-600);
   }
 }
+
+/* Trash button specific styling */
+#btn-clear-chat:hover {
+  color: #ef4444; /* Red color on hover */
+  background: rgba(239, 68, 68, 0.1);
+}
+
+#btn-clear-chat:hover svg {
+  transform: scale(1.1);
+  transition: transform 0.15s ease;
+}

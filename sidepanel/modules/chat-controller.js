@@ -72,10 +72,11 @@ export class ChatController {
 
     try {
       // Get domain from auth service
-      const domain =
-        window.AuthService?.getActiveDomain() || window.CONFIG?.DOMAIN;
+      const domain = window.AuthService?.getActiveDomain();
       if (!domain) {
-        throw new Error("No domain configured");
+        throw new Error(
+          "No domain configured. Please ensure you're logged in."
+        );
       }
 
       this.log("Using domain:", domain);

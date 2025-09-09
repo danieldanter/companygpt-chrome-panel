@@ -1,4 +1,4 @@
-// popup/services/auth-service.js - Smart Domain Detection (CONFIG remains immutable)
+// popup/services/auth-service.js - Background-Driven Auth (CONFIG remains immutable)
 /* eslint-disable no-undef */
 (function () {
   "use strict";
@@ -9,7 +9,7 @@
     if (DEBUG) console.log(...args);
   };
 
-  debug("[AuthService] Initializing - With Smart Domain Detection");
+  debug("[AuthService] Initializing - Background-Driven Auth");
 
   // ============================================
   // SINGLETON AUTH STATE
@@ -39,50 +39,7 @@
   };
 
   // ============================================
-  // SMART DOMAIN DETECTION (matching config.js logic)
-  // ============================================
-  async function detectActiveDomain() {
-    try {
-      const COOKIE_NAME = "__Secure-next-auth.session-token";
-
-      const cookies = await chrome.cookies.getAll({
-        domain: ".506.ai",
-        name: COOKIE_NAME,
-      });
-
-      if (!cookies || cookies.length === 0) {
-        debug("[AuthService] No cookies found");
-        return { domain: null, hasMultiple: false, availableDomains: [] };
-      }
-
-      cookies.sort((a, b) => {
-        const timeA = a.lastAccessed || a.expirationDate || 0;
-        const timeB = b.lastAccessed || b.expirationDate || 0;
-        return timeB - timeA;
-      });
-
-      const domains = cookies.map((c) =>
-        c.domain.replace(/^\./, "").replace(".506.ai", "")
-      );
-      const uniqueDomains = [...new Set(domains)];
-      const activeDomain = domains[0];
-
-      debug(`[AuthService] Active domain: ${activeDomain}`);
-      debug(`[AuthService] Total domains: ${uniqueDomains.length}`);
-
-      return {
-        domain: activeDomain,
-        hasMultiple: uniqueDomains.length > 1,
-        availableDomains: uniqueDomains,
-      };
-    } catch (error) {
-      console.error("[AuthService] Domain detection failed:", error);
-      return { domain: null, hasMultiple: false, availableDomains: [] };
-    }
-  }
-
-  // ============================================
-  // CORE AUTH CHECK - UPDATED WITH DOMAIN INFO
+  // CORE AUTH CHECK
   // ============================================
   async function checkAuth(forceRefresh = false) {
     if (!forceRefresh && isCacheValid()) {
@@ -108,69 +65,56 @@
   }
 
   // ============================================
-  // ACTUAL AUTH CHECK WITH DOMAIN DETECTION
+  // ACTUAL AUTH CHECK (background does domain detection)
   // ============================================
   async function performAuthCheck() {
-    debug("[AuthService] Performing auth check with domain detection...");
+    debug("[AuthService] Performing auth check...");
     AuthState.stats.checksPerformed++;
 
     try {
-      // 1) Detect active domain
-      const domainInfo = await detectActiveDomain();
-
-      if (!domainInfo.domain) {
-        updateAuthState(false, null, "No domain/cookie found", domainInfo);
-        return false;
-      }
-
-      // Cache domain info (read-only CONFIG remains untouched)
-      AuthState.cache.activeDomain = domainInfo.domain;
-      AuthState.cache.hasMultipleDomains = domainInfo.hasMultiple;
-      AuthState.cache.availableDomains = domainInfo.availableDomains;
-
-      // 2) Ask background to check auth (it uses smart domain too)
+      // Use background script for domain detection and auth check
       const response = await chrome.runtime.sendMessage({
         action: "checkAuth",
         skipCache: false,
       });
 
-      if (response?.success && response?.isAuthenticated) {
-        updateAuthState(true, response.user, "Authenticated via background", {
-          domain: response.domain ?? domainInfo.domain,
-          hasMultiple: response.hasMultipleDomains ?? domainInfo.hasMultiple,
-          availableDomains:
-            response.availableDomains ?? domainInfo.availableDomains,
-        });
-        return true;
+      console.log("[AuthService] Background response:", response);
+
+      if (response?.success) {
+        const domainInfo = {
+          domain: response.domain,
+          hasMultiple: response.hasMultipleDomains || false,
+          availableDomains: response.availableDomains || [],
+        };
+
+        console.log("[AuthService] Domain info before update:", domainInfo);
+
+        updateAuthState(
+          response.isAuthenticated,
+          response.user,
+          response.isAuthenticated ? "Authenticated" : "Not authenticated",
+          domainInfo
+        );
+
+        console.log(
+          "[AuthService] Domain after updateAuthState:",
+          AuthState.cache.activeDomain
+        );
+
+        return response.isAuthenticated;
       }
 
-      if (response?.success && !response?.isAuthenticated) {
-        updateAuthState(false, null, "Not authenticated", {
-          domain: response.domain ?? domainInfo.domain,
-          hasMultiple: response.hasMultipleDomains ?? domainInfo.hasMultiple,
-          availableDomains:
-            response.availableDomains ?? domainInfo.availableDomains,
-        });
-        return false;
-      }
-
-      console.warn("[AuthService] Background check failed, using fallback");
-      updateAuthState(false, null, "Background check failed", domainInfo);
+      updateAuthState(false, null, "Background check failed", null);
       return false;
     } catch (error) {
       console.error("[AuthService] Auth check error:", error);
-      const emptyDomainInfo = {
-        domain: AuthState.cache.activeDomain ?? null,
-        hasMultiple: AuthState.cache.hasMultipleDomains ?? false,
-        availableDomains: AuthState.cache.availableDomains ?? [],
-      };
-      updateAuthState(false, null, error.message, emptyDomainInfo);
+      updateAuthState(false, null, error.message, null);
       return false;
     }
   }
 
   // ============================================
-  // STATE MANAGEMENT - UPDATED WITH DOMAIN INFO
+  // STATE MANAGEMENT
   // ============================================
   function updateAuthState(isAuthenticated, user, reason, domainInfo = null) {
     const prev = AuthState.cache.isAuthenticated;
@@ -185,46 +129,29 @@
       AuthState.cache.availableDomains = domainInfo.availableDomains;
     }
 
-    debug(
-      `[AuthService] Auth state: ${isAuthenticated} (${reason}) | Domain: ${AuthState.cache.activeDomain}`
+    // Debug log to verify domain is set
+    console.log(
+      "[AuthService] Domain after update:",
+      AuthState.cache.activeDomain
     );
 
-    // Update StateStore with domain info first
-    if (window.StateStore && window.ActionTypes) {
-      if (domainInfo) {
-        window.StateStore.dispatch(window.ActionTypes.DOMAIN_DETECTED, {
-          domain: domainInfo.domain,
-          hasMultiple: domainInfo.hasMultiple,
-          availableDomains: domainInfo.availableDomains,
-        });
-      }
-      // If StorageService caches folders, clear its cache on domain switch
-      try {
-        if (window.StorageService?.clearData) {
-          window.StorageService.clearData(["folders"]);
-        }
-      } catch (e) {
-        console.warn("[AuthService] Could not clear folders cache:", e);
-      }
-      // Then auth state
-      if (isAuthenticated) {
-        window.StateStore.dispatch(window.ActionTypes.AUTH_CHECK_SUCCESS, {
-          user,
-          domain: AuthState.cache.activeDomain,
-          hasMultipleDomains: AuthState.cache.hasMultipleDomains,
-          availableDomains: AuthState.cache.availableDomains,
-        });
-      } else {
-        window.StateStore.dispatch(window.ActionTypes.AUTH_CHECK_FAILURE, {
-          error: reason,
-        });
-      }
+    // Update unified state
+    if (window.AppState) {
+      window.AppState.update("auth", {
+        isAuthenticated,
+        user,
+        domain: AuthState.cache.activeDomain,
+        hasMultipleDomains: AuthState.cache.hasMultipleDomains,
+        availableDomains: AuthState.cache.availableDomains,
+      });
     }
 
+    // Notify listeners if there was a change
     if (prev !== isAuthenticated) {
       notifyListeners(isAuthenticated, user);
     }
 
+    // Persist to local storage
     chrome.storage.local
       .set({
         authState: {
@@ -240,7 +167,7 @@
   }
 
   // ============================================
-  // NEW GETTER METHODS FOR DOMAIN INFO
+  // DOMAIN GETTERS
   // ============================================
   function getActiveDomain() {
     return AuthState.cache.activeDomain;
@@ -261,7 +188,7 @@
   }
 
   // ============================================
-  // CACHE / EVENTS / HELPERS (unchanged)
+  // CACHE / EVENTS / HELPERS
   // ============================================
   function isCacheValid() {
     if (AuthState.cache.isAuthenticated === null) return false;
@@ -325,34 +252,36 @@
     clearCache();
 
     try {
-      // 1. First try to get domain from current detection
-      const domainInfo = await detectActiveDomain();
+      // Prefer currently cached or recently stored domain info
+      let domain = AuthState.cache.activeDomain || null;
+
+      // Try to read lastKnownDomain and/or prior authState from storage
+      if (!domain) {
+        const stored = await chrome.storage.local.get([
+          "lastKnownDomain",
+          "authState",
+        ]);
+        domain =
+          stored.lastKnownDomain || stored.authState?.activeDomain || null;
+      }
+
       let loginUrl = "";
 
-      if (domainInfo.domain) {
-        loginUrl = `https://${domainInfo.domain}.506.ai/de/login?callbackUrl=%2F`;
-        debug(`[AuthService] Login URL from detected domain: ${loginUrl}`);
-      } else {
-        // 2. Try to get last known domain from storage
-        const stored = await chrome.storage.local.get(["lastKnownDomain"]);
-        if (stored.lastKnownDomain) {
-          loginUrl = `https://${stored.lastKnownDomain}.506.ai/de/login?callbackUrl=%2F`;
-          debug(`[AuthService] Login URL from stored domain: ${loginUrl}`);
-        } else if (
-          window.CONFIG?.buildLoginUrl &&
-          window.CONFIG.isConfigured()
-        ) {
-          // 3. Use CONFIG if it has a valid domain
-          loginUrl = window.CONFIG.buildLoginUrl();
-          debug(`[AuthService] Login URL from CONFIG: ${loginUrl}`);
-        }
+      if (domain) {
+        loginUrl = `https://${domain}.506.ai/de/login?callbackUrl=%2F`;
+        debug(
+          `[AuthService] Login URL (from cached/stored domain): ${loginUrl}`
+        );
+      } else if (window.CONFIG?.buildLoginUrl && window.CONFIG.isConfigured()) {
+        // Fallback to CONFIG builder (may already embed domain)
+        loginUrl = window.CONFIG.buildLoginUrl();
+        debug(`[AuthService] Login URL (from CONFIG): ${loginUrl}`);
       }
 
       if (!loginUrl) {
-        // No domain found at all - ask user to visit a 506.ai page first
+        // No domain available - ask user to visit a 506.ai page first
         console.error("[AuthService] No domain available for login");
 
-        // Show helpful message to user
         if (window.UIController?.showError) {
           window.UIController.showError(
             "Bitte besuche zuerst eine 506.ai Seite, um die Domain zu erkennen"
@@ -362,17 +291,14 @@
             "Bitte besuche zuerst eine 506.ai Seite, um die Domain zu erkennen"
           );
         }
-
         return false;
       }
 
       // Open the login page
       await chrome.tabs.create({ url: loginUrl });
 
-      // Wait a bit for login to potentially complete
+      // Short delay, then re-check auth status
       await new Promise((r) => setTimeout(r, 3000));
-
-      // Re-check auth status
       return checkAuth(true);
     } catch (error) {
       console.error("[AuthService] Login failed:", error);
@@ -396,7 +322,7 @@
   // INITIALIZATION
   // ============================================
   async function initialize() {
-    debug("[AuthService] Initializing with domain detection...");
+    debug("[AuthService] Initializing (background-driven)...");
 
     try {
       const stored = await chrome.storage.local.get("authState");
@@ -466,5 +392,5 @@
     _state: AuthState,
   };
 
-  debug("[AuthService] Ready - With Smart Domain Detection (immutable CONFIG)");
+  debug("[AuthService] Ready - Background-Driven Auth (immutable CONFIG)");
 })();
