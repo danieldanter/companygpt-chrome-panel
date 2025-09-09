@@ -1,318 +1,7 @@
 // sidepanel/app.js
 import { ChatController } from "./modules/chat-controller.js";
 import { MessageRenderer } from "./modules/message-renderer.js";
-import { ContextAnalyzer } from "./modules/context-analyzer.js";
-
-/* ---------------------------------------------------------
-   Simplified ContextManager (replacing previous version)
---------------------------------------------------------- */
-
-class ContextManager {
-  constructor(app) {
-    this.app = app;
-    this.currentContext = null;
-    this.isLoaded = false;
-    this.lastUrl = null;
-
-    // UI elements
-    this.loadButton = null;
-    this.contextBar = null;
-    this.contextText = null;
-    this.clearButton = null;
-
-    this.init();
-  }
-
-  init() {
-    console.log("[ContextManager] Initializing...");
-
-    // Get UI elements
-    this.loadButton = document.getElementById("load-context-btn");
-    this.contextBar = document.getElementById("context-bar");
-    this.contextText = document.getElementById("context-text");
-    this.clearButton = document.getElementById("clear-context");
-
-    // Setup event listeners
-    this.setupEventListeners();
-
-    // Monitor page changes
-    this.monitorPageChanges();
-  }
-
-  setupEventListeners() {
-    // Load context button
-    this.loadButton?.addEventListener("click", () => {
-      this.loadPageContext();
-    });
-
-    // Clear context button
-    this.clearButton?.addEventListener("click", () => {
-      this.clearContext();
-    });
-  }
-
-  async monitorPageChanges() {
-    // Check for URL changes every 2 seconds
-    setInterval(async () => {
-      const currentUrl = await this.getCurrentUrl();
-
-      if (this.lastUrl && currentUrl !== this.lastUrl) {
-        console.log("[ContextManager] Page changed:", currentUrl);
-        this.onPageChange(currentUrl);
-      }
-
-      this.lastUrl = currentUrl;
-    }, 2000);
-  }
-
-  async getCurrentUrl() {
-    try {
-      const [tab] = await chrome.tabs.query({
-        active: true,
-        currentWindow: true,
-      });
-      return tab?.url || "";
-    } catch {
-      return "";
-    }
-  }
-
-  onPageChange(newUrl) {
-    // Reset context when page changes
-    this.clearContext();
-
-    // Show subtle notification that context is available
-    this.showContextAvailable();
-  }
-
-  showContextAvailable() {
-    // Add a subtle pulse to the load button
-    this.loadButton?.classList.add("context-available");
-    setTimeout(() => {
-      this.loadButton?.classList.remove("context-available");
-    }, 3000);
-  }
-
-  async loadPageContext() {
-    if (!this.loadButton) return;
-
-    console.log("[ContextManager] Loading page context...");
-
-    // Set loading state
-    this.setButtonState("loading");
-
-    try {
-      // Get page context using the app's method
-      const context = await this.app.getPageContext();
-
-      if (
-        !context ||
-        (Object.prototype.hasOwnProperty.call(context, "success") &&
-          !context.success)
-      ) {
-        throw new Error(context?.error || "No context available");
-      }
-
-      // Process the context
-      const processedContext = this.processContext(context);
-
-      // Store context
-      this.currentContext = processedContext;
-      this.isLoaded = true;
-
-      // Update UI
-      this.setButtonState("loaded");
-      this.showContextBar(processedContext);
-
-      console.log(
-        "[ContextManager] Context loaded successfully:",
-        processedContext
-      );
-    } catch (error) {
-      console.error("[ContextManager] Failed to load context:", error);
-      this.setButtonState("error");
-
-      // Reset after 3 seconds
-      setTimeout(() => {
-        this.setButtonState("default");
-      }, 3000);
-    }
-  }
-
-  processContext(rawContext) {
-    console.log("[ContextManager] Processing context:", rawContext);
-
-    // Clean and process the text content
-    let textContent = "";
-    if (rawContext.mainContent) {
-      textContent = this.cleanText(rawContext.mainContent);
-    }
-
-    // Get selected text if available
-    let selectedText = "";
-    if (rawContext.selectedText) {
-      selectedText = this.cleanText(rawContext.selectedText);
-    }
-
-    // Calculate word count
-    const wordCount = textContent
-      .split(/\s+/)
-      .filter((word) => word.length > 0).length;
-
-    const processedContext = {
-      title: rawContext.title || "Untitled Page",
-      url: rawContext.url || "",
-      selectedText,
-      mainContent: textContent,
-      wordCount,
-      timestamp: Date.now(),
-      isGoogleDocs: rawContext.metadata?.isGoogleDocs || false,
-    };
-
-    console.log("[ContextManager] Context processed:", {
-      title: processedContext.title,
-      wordCount: processedContext.wordCount,
-      hasSelectedText: !!processedContext.selectedText,
-      isGoogleDocs: processedContext.isGoogleDocs,
-      contentLength: processedContext.mainContent.length,
-    });
-
-    return processedContext;
-  }
-
-  cleanText(text) {
-    if (!text) return "";
-
-    // Remove extra whitespace and clean up
-    return text
-      .replace(/\s+/g, " ") // Multiple spaces to single space
-      .replace(/\n\s*\n/g, "\n") // Multiple newlines to single
-      .trim();
-  }
-
-  setButtonState(state) {
-    if (!this.loadButton) return;
-
-    // Remove all state classes
-    this.loadButton.classList.remove("loading", "loaded", "error");
-    this.loadButton.setAttribute("data-state", state);
-
-    // Update button appearance based on state
-    switch (state) {
-      case "loading":
-        this.loadButton.classList.add("loading");
-        this.loadButton.disabled = true;
-        this.loadButton.title = "Loading context...";
-        break;
-
-      case "loaded":
-        this.loadButton.classList.add("loaded");
-        this.loadButton.disabled = false;
-        this.loadButton.title = "Context loaded - click to refresh";
-        break;
-
-      case "error":
-        this.loadButton.disabled = false;
-        this.loadButton.title = "Failed to load context - click to retry";
-        break;
-
-      default: // 'default'
-        this.loadButton.disabled = false;
-        this.loadButton.title = "Load page context";
-    }
-  }
-
-  showContextBar(context) {
-    if (!this.contextBar || !this.contextText) return;
-
-    // Create context info text
-    let contextInfo = `${context.title}`;
-
-    if (context.wordCount > 0) {
-      contextInfo += ` (${context.wordCount} words)`;
-    }
-
-    if (context.isGoogleDocs) {
-      contextInfo += ` • Google Docs`;
-    }
-
-    // Update context text
-    this.contextText.textContent = contextInfo;
-
-    // Show context bar
-    this.contextBar.style.display = "flex";
-
-    // Show clear button
-    if (this.clearButton) {
-      this.clearButton.style.display = "flex";
-    }
-  }
-
-  clearContext() {
-    console.log("[ContextManager] Clearing context");
-
-    // Clear stored context
-    this.currentContext = null;
-    this.isLoaded = false;
-
-    // Reset button state
-    this.setButtonState("default");
-
-    // Hide context bar
-    if (this.contextBar) {
-      this.contextBar.style.display = "none";
-    }
-
-    // Hide clear button
-    if (this.clearButton) {
-      this.clearButton.style.display = "none";
-    }
-  }
-
-  // Method to get context for including in messages
-  getContextForMessage() {
-    if (!this.isLoaded || !this.currentContext) {
-      return null;
-    }
-
-    return this.currentContext;
-  }
-
-  // Check if context is loaded
-  hasContext() {
-    return this.isLoaded && this.currentContext !== null;
-  }
-}
-
-/* ---------------------------------------------------------
-   Subtle pulse CSS for context button
---------------------------------------------------------- */
-
-const contextAvailableCSS = `
-.context-load-btn.context-available {
-  animation: contextPulse 2s ease-in-out;
-}
-
-@keyframes contextPulse {
-  0%, 100% { 
-    background: transparent; 
-    color: var(--text-muted);
-  }
-  50% { 
-    background: rgba(14, 165, 233, 0.1); 
-    color: var(--blue-600);
-  }
-}
-`;
-
-// Inject the CSS
-const style = document.createElement("style");
-style.textContent = contextAvailableCSS;
-document.head.appendChild(style);
-
-/* ---------------------------------------------------------
-   CompanyGPTChat (wired to simplified ContextManager)
---------------------------------------------------------- */
+import { ContextManager } from "./modules/context-manager.js";
 
 class CompanyGPTChat {
   constructor() {
@@ -342,7 +31,6 @@ class CompanyGPTChat {
     try {
       // Initialize modules (but not chat controller yet)
       this.messageRenderer = new MessageRenderer();
-      this.contextAnalyzer = new ContextAnalyzer();
 
       // Setup UI elements FIRST
       this.setupUIElements();
@@ -943,103 +631,29 @@ class CompanyGPTChat {
     // Add user message to UI
     this.addMessage(message, "user");
 
-    // Show typing indicator
-    const typingId = this.showTypingIndicator();
+    // Show enhanced thinking indicator
+    const thinkingId = this.showTypingIndicator();
 
     try {
-      console.log("[App] Processing message with context manager...");
-
-      // NEW: Get context from context manager ONLY
+      // Get context from context manager
       let context = null;
       if (this.contextManager && this.contextManager.hasContext()) {
         context = this.contextManager.getContextForMessage();
-        console.log("[App] Using loaded context from ContextManager:", context);
-      } else {
-        console.log("[App] No context loaded in ContextManager");
       }
-
-      console.log("[App] Calling ChatController.sendMessage...");
 
       // Send to CompanyGPT API via ChatController
       const response = await this.chatController.sendMessage(message, context);
 
-      console.log("[App] Got response:", response);
+      // Remove thinking indicator
+      this.removeTypingIndicator(thinkingId);
 
-      // Remove typing indicator
-      this.removeTypingIndicator(typingId);
-
-      // Add assistant response
-      this.addMessage(response.content, "assistant");
+      // Start streaming the response
+      const messageId = this.startStreamingMessage();
+      await this.streamText(messageId, response.content, 3); // Very fast: 3ms per character
     } catch (error) {
       console.error("[App] Failed to send message:", error);
-      this.removeTypingIndicator(typingId);
+      this.removeTypingIndicator(thinkingId);
       this.addMessage(`Fehler: ${error.message}`, "error");
-    }
-  }
-
-  async getPageContext() {
-    try {
-      console.log("[App] Requesting page context...");
-
-      // Get current tab
-      const [tab] = await chrome.tabs.query({
-        active: true,
-        currentWindow: true,
-      });
-
-      if (!tab || !tab.id) {
-        throw new Error("No active tab found");
-      }
-
-      // Check if it's Google Docs
-      if (tab.url && tab.url.includes("docs.google.com/document")) {
-        console.log("[App] Google Docs detected, using script injection");
-
-        // Use script injection for Google Docs
-        const response = await chrome.runtime.sendMessage({
-          type: "INJECT_GOOGLE_DOCS_EXTRACTOR",
-          data: { tabId: tab.id },
-        });
-
-        if (response && response.success) {
-          console.log(
-            `[App] Injection successful: ${response.length} characters`
-          );
-          return {
-            success: true,
-            title: tab.title,
-            url: tab.url,
-            selectedText: "",
-            mainContent: response.content,
-            metadata: { isGoogleDocs: true },
-          };
-        } else {
-          console.error("[App] Injection failed:", response?.error);
-        }
-      }
-
-      // Fallback to regular content script approach
-      const response = await chrome.runtime.sendMessage({
-        type: "GET_PAGE_CONTEXT",
-      });
-
-      if (response && response.success !== false) {
-        console.log("[App] Got page context:", response);
-        return response;
-      }
-
-      // Final fallback
-      return {
-        success: true,
-        title: tab.title,
-        url: tab.url,
-        selectedText: "",
-        mainContent: "",
-        metadata: {},
-      };
-    } catch (error) {
-      console.error("[App] Failed to get page context:", error);
-      return null;
     }
   }
 
@@ -1085,7 +699,15 @@ class CompanyGPTChat {
     // Handle system messages with icon
     if (role === "system") {
       messageEl.innerHTML = `<span class="system-icon">ℹ️</span> ${content}`;
+    } else if (role === "assistant") {
+      // Just use markdown renderer - let it handle all preprocessing
+      if (this.messageRenderer) {
+        messageEl.innerHTML = this.messageRenderer.renderMarkdown(content);
+      } else {
+        messageEl.innerHTML = content.replace(/\n/g, "<br>");
+      }
     } else {
+      // User messages and errors as plain text
       messageEl.textContent = content;
     }
 
@@ -1093,14 +715,81 @@ class CompanyGPTChat {
     this.scrollToBottom();
   }
 
+  // Add streaming message support
+  startStreamingMessage() {
+    const messageId = `message-${Date.now()}`;
+    const messageEl = document.createElement("div");
+    messageEl.className = "message assistant streaming";
+    messageEl.id = messageId;
+    messageEl.innerHTML = '<span class="streaming-cursor">▊</span>';
+
+    this.elements.messagesContainer?.appendChild(messageEl);
+    this.scrollToBottom();
+
+    return messageId;
+  }
+
+  async streamText(messageId, content, speed = 30) {
+    const messageEl = document.getElementById(messageId);
+    if (!messageEl) return;
+
+    // Preprocess content like we do in addMessage
+    let processedContent = content;
+
+    if (processedContent.startsWith('"') && processedContent.endsWith('"')) {
+      processedContent = processedContent.slice(1, -1);
+    }
+
+    processedContent = processedContent.replace(/\\n\\n\\n\\n/g, "\n\n");
+    processedContent = processedContent.replace(/\\n\\n\\n/g, "\n\n");
+    processedContent = processedContent.replace(/\\n\\n/g, "\n\n");
+    processedContent = processedContent.replace(/\\n/g, "\n");
+
+    // Render final markdown
+    const finalHTML = this.messageRenderer
+      ? this.messageRenderer.renderMarkdown(processedContent)
+      : processedContent.replace(/\n/g, "<br>");
+
+    // Create temporary div to get plain text for streaming
+    const tempDiv = document.createElement("div");
+    tempDiv.innerHTML = finalHTML;
+    const plainText = tempDiv.textContent || tempDiv.innerText || "";
+
+    // Stream character by character
+    let currentText = "";
+    for (let i = 0; i < plainText.length; i++) {
+      currentText += plainText[i];
+
+      // Update with current text + cursor
+      messageEl.innerHTML = `${currentText.replace(
+        /\n/g,
+        "<br>"
+      )}<span class="streaming-cursor">▊</span>`;
+      this.scrollToBottom();
+
+      // Wait before next character
+      await new Promise((resolve) => setTimeout(resolve, speed));
+    }
+
+    // Replace with final formatted HTML
+    messageEl.className = "message assistant";
+    messageEl.innerHTML = finalHTML;
+    this.scrollToBottom();
+  }
+
   showTypingIndicator() {
     const typingEl = document.createElement("div");
-    typingEl.className = "typing-indicator";
-    typingEl.id = `typing-${Date.now()}`;
+    typingEl.className = "thinking-indicator";
+    typingEl.id = `thinking-${Date.now()}`;
     typingEl.innerHTML = `
-      <div class="typing-dot"></div>
-      <div class="typing-dot"></div>
-      <div class="typing-dot"></div>
+      <div class="thinking-content">
+        <span class="thinking-text">Denkt nach</span>
+        <div class="thinking-dots">
+          <div class="thinking-dot"></div>
+          <div class="thinking-dot"></div>
+          <div class="thinking-dot"></div>
+        </div>
+      </div>
     `;
 
     this.elements.messagesContainer?.appendChild(typingEl);

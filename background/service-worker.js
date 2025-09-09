@@ -302,39 +302,180 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
 
         // NEW: Injects a function into the active Google Docs tab that fetches the plain-text export and returns it.
-        case "INJECT_GOOGLE_DOCS_EXTRACTOR": {
+        case "INJECT_UNIVERSAL_EXTRACTOR": {
           const { tabId } = request.data;
 
           try {
-            debug("Injecting Google Docs extractor into tab:", tabId);
+            debug("Injecting universal content extractor into tab:", tabId);
 
             const results = await chrome.scripting.executeScript({
               target: { tabId },
-              func: async () => {
-                // Your exact working console code
-                const match = location.href.match(/\/document\/d\/([^/]+)/);
-                if (!match) return { success: false, error: "No doc ID found" };
-
-                const docId = match[1];
-                const exportUrl = `https://docs.google.com/document/d/${docId}/export?format=txt`;
-
+              func: () => {
+                // Universal content extraction function
                 try {
-                  const response = await fetch(exportUrl);
-                  if (!response.ok)
-                    return { success: false, error: `HTTP ${response.status}` };
+                  const url = window.location.href;
+                  const title = document.title || "";
+                  const selectedText = window.getSelection().toString().trim();
 
-                  const text = await response.text();
+                  console.log(`[Universal Extractor] Processing: ${url}`);
+
+                  // GOOGLE DOCS DETECTION AND EXTRACTION
+                  if (url.includes("docs.google.com/document")) {
+                    console.log("[Universal Extractor] Google Docs detected");
+
+                    const match = url.match(/\/document\/d\/([^/]+)/);
+                    if (!match) {
+                      return {
+                        success: false,
+                        error: "No Google Docs ID found",
+                      };
+                    }
+
+                    const docId = match[1];
+                    const exportUrl = `https://docs.google.com/document/d/${docId}/export?format=txt`;
+
+                    // Use Google's export API
+                    return fetch(exportUrl)
+                      .then((response) => {
+                        if (!response.ok) {
+                          throw new Error(`HTTP ${response.status}`);
+                        }
+                        return response.text();
+                      })
+                      .then((text) => {
+                        console.log(
+                          `[Universal Extractor] Google Docs: ${text.length} characters`
+                        );
+                        return {
+                          success: true,
+                          title,
+                          selectedText,
+                          mainContent: text,
+                          url,
+                          length: text.length,
+                          extractionMethod: "googleDocsAPI",
+                          pageType: "googleDocs",
+                        };
+                      })
+                      .catch((error) => ({
+                        success: false,
+                        error: error.message,
+                        title,
+                        url,
+                      }));
+                  }
+
+                  // REGULAR PAGE EXTRACTION
+                  console.log("[Universal Extractor] Regular page detected");
+
+                  let mainContent = "";
+
+                  // Strategy 1: Article tag
+                  const article = document.querySelector("article");
+                  if (article && article.innerText?.trim()) {
+                    mainContent = article.innerText.trim();
+                    console.log("[Universal Extractor] Used article tag");
+                  }
+
+                  // Strategy 2: Main content areas
+                  if (!mainContent) {
+                    const selectors = [
+                      "main",
+                      '[role="main"]',
+                      ".content",
+                      "#content",
+                      ".post-content",
+                      ".entry-content",
+                      ".article-content",
+                    ];
+
+                    for (const selector of selectors) {
+                      const element = document.querySelector(selector);
+                      if (element && element.innerText?.trim()) {
+                        mainContent = element.innerText.trim();
+                        console.log(
+                          `[Universal Extractor] Used selector: ${selector}`
+                        );
+                        break;
+                      }
+                    }
+                  }
+
+                  // Strategy 3: Largest text block
+                  if (!mainContent) {
+                    const textElements = document.querySelectorAll(
+                      "p, div, section, article"
+                    );
+                    let largestElement = null;
+                    let maxLength = 0;
+
+                    textElements.forEach((el) => {
+                      const text = el.innerText?.trim() || "";
+                      if (text.length > maxLength && text.length > 100) {
+                        maxLength = text.length;
+                        largestElement = el;
+                      }
+                    });
+
+                    if (largestElement) {
+                      mainContent = largestElement.innerText.trim();
+                      console.log(
+                        "[Universal Extractor] Used largest text block"
+                      );
+                    }
+                  }
+
+                  // Strategy 4: Body fallback with filtering
+                  if (!mainContent) {
+                    const bodyText = document.body?.innerText || "";
+                    if (bodyText) {
+                      // Filter out navigation and UI elements
+                      const lines = bodyText
+                        .split("\n")
+                        .map((line) => line.trim())
+                        .filter(
+                          (line) =>
+                            line.length > 20 &&
+                            !line.match(
+                              /^(Home|Menu|Navigation|Footer|Copyright|Privacy|Terms|Skip to|Login|Sign up|Search|Back to top)/i
+                            )
+                        );
+
+                      mainContent = lines.join("\n");
+                      console.log(
+                        "[Universal Extractor] Used filtered body text"
+                      );
+                    }
+                  }
+
+                  // Clean up content
+                  mainContent = mainContent
+                    .replace(/\s+/g, " ")
+                    .replace(/\n\s*\n/g, "\n")
+                    .trim();
+
                   console.log(
-                    `Injected script extracted ${text.length} characters`
+                    `[Universal Extractor] Regular page: ${mainContent.length} characters`
                   );
 
                   return {
                     success: true,
-                    content: text,
-                    length: text.length,
+                    title,
+                    selectedText,
+                    mainContent,
+                    url,
+                    length: mainContent.length,
+                    extractionMethod: "domAnalysis",
+                    pageType: "regular",
                   };
                 } catch (error) {
-                  return { success: false, error: error.message };
+                  console.error("[Universal Extractor] Error:", error);
+                  return {
+                    success: false,
+                    error: error.message,
+                    title: document.title || "",
+                    url: window.location.href,
+                  };
                 }
               },
             });
@@ -346,7 +487,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
             sendResponse(result);
           } catch (error) {
-            console.error("Script injection failed:", error);
+            console.error("Universal script injection failed:", error);
             sendResponse({ success: false, error: error.message });
           }
           break;

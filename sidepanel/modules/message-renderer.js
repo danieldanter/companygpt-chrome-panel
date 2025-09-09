@@ -92,45 +92,150 @@ export class MessageRenderer {
   }
 
   /**
-   * Basic markdown rendering
-   * @param {string} text - Markdown text
+   * Enhanced markdown rendering with better formatting
+   * @param {string} text - Markdown text to render
    * @returns {string} HTML string
    */
   renderMarkdown(text) {
     if (!text) return "";
 
-    // Escape HTML first
-    let html = this.escapeHtml(text);
+    // Don't escape HTML first - we'll handle it more carefully
+    let html = text;
 
-    // Convert markdown syntax
-    // Bold
-    html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+    // Remove quote wrapping if entire text is wrapped in quotes
+    if (html.startsWith('"') && html.endsWith('"')) {
+      html = html.slice(1, -1);
+    }
 
-    // Italic
-    html = html.replace(/\*(.*?)\*/g, "<em>$1</em>");
+    // Fix literal escape sequences
+    html = html.replace(/\\n\\n\\n\\n/g, "\n\n");
+    html = html.replace(/\\n\\n\\n/g, "\n\n");
+    html = html.replace(/\\n\\n/g, "\n\n");
+    html = html.replace(/\\n/g, "\n");
 
-    // Code blocks
-    html = html.replace(/```([\s\S]*?)```/g, "<pre><code>$1</code></pre>");
+    // Fix escaped characters
+    html = html.replace(/\\"/g, '"');
+    html = html.replace(/\\\\/g, "\\");
+    html = html.replace(/\\'/g, "'");
+    html = html.replace(/\\&/g, "&");
+    html = html.replace(/\\([^\\])/g, "$1");
 
-    // Inline code
-    html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+    // Clean up multiple consecutive newlines
+    html = html.replace(/\n\n\n+/g, "\n\n");
 
-    // Links
+    // Handle code blocks FIRST (before other processing)
+    const codeBlocks = [];
     html = html.replace(
-      /\[([^\]]+)\]\(([^\)]+)\)/g,
-      '<a href="$2" target="_blank">$1</a>'
+      /```(\w+)?\n?([\s\S]*?)```/g,
+      (match, language, code) => {
+        const index = codeBlocks.length;
+        const lang = language || "text";
+        codeBlocks.push(
+          `<pre class="code-block"><code class="language-${lang}">${this.escapeHtml(
+            code.trim()
+          )}</code></pre>`
+        );
+        return `__CODE_BLOCK_${index}__`;
+      }
     );
 
-    // Line breaks
+    // Handle inline code SECOND (before other formatting)
+    const inlineCodes = [];
+    html = html.replace(/`([^`]+)`/g, (match, code) => {
+      const index = inlineCodes.length;
+      inlineCodes.push(
+        `<code class="inline-code">${this.escapeHtml(code)}</code>`
+      );
+      return `__INLINE_CODE_${index}__`;
+    });
+
+    // Now escape remaining HTML
+    html = this.escapeHtml(html);
+
+    // Headers (must come before bold to avoid conflicts)
+    html = html.replace(/^### (.*$)/gm, '<h3 class="markdown-h3">$1</h3>');
+    html = html.replace(/^## (.*$)/gm, '<h2 class="markdown-h2">$1</h2>');
+    html = html.replace(/^# (.*$)/gm, '<h1 class="markdown-h1">$1</h1>');
+
+    // Bold and italic (enhanced patterns)
+    html = html.replace(/\*\*\*(.*?)\*\*\*/g, "<strong><em>$1</em></strong>"); // Bold + italic
+    html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>"); // Bold
+    html = html.replace(/\*(.*?)\*/g, "<em>$1</em>"); // Italic
+
+    // Links with better pattern
+    html = html.replace(
+      /\[([^\]]+)\]\(([^\)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener">$1</a>'
+    );
+
+    // Handle different list types
+    // Unordered lists (-, *, +)
+    html = html.replace(/^[\-\*\+] (.+)$/gm, '<li class="markdown-li">$1</li>');
+
+    // Numbered lists
+    html = html.replace(
+      /^\d+\. (.+)$/gm,
+      '<li class="markdown-li numbered">$1</li>'
+    );
+
+    // Wrap consecutive list items in ul/ol tags
+    html = html.replace(
+      /(<li class="markdown-li"(?!.*numbered)>.*?<\/li>(?:\s*<li class="markdown-li"(?!.*numbered)>.*?<\/li>)*)/gm,
+      '<ul class="markdown-ul">$1</ul>'
+    );
+
+    html = html.replace(
+      /(<li class="markdown-li numbered">.*?<\/li>(?:\s*<li class="markdown-li numbered">.*?<\/li>)*)/gm,
+      '<ol class="markdown-ol">$1</ol>'
+    );
+
+    // Blockquotes
+    html = html.replace(
+      /^&gt; (.+)$/gm,
+      '<blockquote class="markdown-quote">$1</blockquote>'
+    );
+
+    // Horizontal rules
+    html = html.replace(/^---$/gm, '<hr class="markdown-hr">');
+
+    // Strikethrough
+    html = html.replace(/~~(.*?)~~/g, "<del>$1</del>");
+
+    // Task lists (checkboxes)
+    html = html.replace(
+      /^\- \[ \] (.+)$/gm,
+      '<li class="task-item"><input type="checkbox" disabled> $1</li>'
+    );
+    html = html.replace(
+      /^\- \[x\] (.+)$/gm,
+      '<li class="task-item"><input type="checkbox" disabled checked> $1</li>'
+    );
+
+    // Highlight/mark text
+    html = html.replace(/==(.*?)==/g, "<mark>$1</mark>");
+
+    // Paragraph handling - convert double line breaks to paragraphs
+    html = html.replace(/\n\s*\n/g, '</p><p class="markdown-p">');
+    html = `<p class="markdown-p">${html}</p>`;
+
+    // Clean up empty paragraphs and paragraphs that only contain HTML tags
+    html = html.replace(/<p class="markdown-p">\s*<\/p>/g, "");
+    html = html.replace(/<p class="markdown-p">(\s*<[^>]+>\s*)<\/p>/g, "$1");
+
+    // Single line breaks become <br>
     html = html.replace(/\n/g, "<br>");
 
-    // Lists
-    html = html.replace(/^\* (.+)$/gm, "<li>$1</li>");
-    html = html.replace(/(<li>.*<\/li>)/s, "<ul>$1</ul>");
+    // Restore code blocks and inline code
+    codeBlocks.forEach((codeBlock, index) => {
+      html = html.replace(`__CODE_BLOCK_${index}__`, codeBlock);
+    });
+
+    inlineCodes.forEach((inlineCode, index) => {
+      html = html.replace(`__INLINE_CODE_${index}__`, inlineCode);
+    });
 
     return html;
   }
-
   /**
    * Render permission request UI
    * @param {Object} message - Message with permission data
