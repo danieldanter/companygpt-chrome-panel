@@ -258,7 +258,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           break;
         }
 
-        // ADD THIS NEW CASE:
+        // Extract Google Docs content by calling its export endpoint directly from the SW (uses browser cookies).
         case "EXTRACT_GOOGLE_DOCS": {
           const { docId } = request.data;
 
@@ -297,6 +297,57 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               success: false,
               error: error.message,
             });
+          }
+          break;
+        }
+
+        // NEW: Injects a function into the active Google Docs tab that fetches the plain-text export and returns it.
+        case "INJECT_GOOGLE_DOCS_EXTRACTOR": {
+          const { tabId } = request.data;
+
+          try {
+            debug("Injecting Google Docs extractor into tab:", tabId);
+
+            const results = await chrome.scripting.executeScript({
+              target: { tabId },
+              func: async () => {
+                // Your exact working console code
+                const match = location.href.match(/\/document\/d\/([^/]+)/);
+                if (!match) return { success: false, error: "No doc ID found" };
+
+                const docId = match[1];
+                const exportUrl = `https://docs.google.com/document/d/${docId}/export?format=txt`;
+
+                try {
+                  const response = await fetch(exportUrl);
+                  if (!response.ok)
+                    return { success: false, error: `HTTP ${response.status}` };
+
+                  const text = await response.text();
+                  console.log(
+                    `Injected script extracted ${text.length} characters`
+                  );
+
+                  return {
+                    success: true,
+                    content: text,
+                    length: text.length,
+                  };
+                } catch (error) {
+                  return { success: false, error: error.message };
+                }
+              },
+            });
+
+            const result =
+              Array.isArray(results) && results.length
+                ? results[0].result
+                : { success: false, error: "No result from injected script" };
+
+            sendResponse(result);
+          } catch (error) {
+            console.error("Script injection failed:", error);
+            sendResponse({ success: false, error: error.message });
           }
           break;
         }

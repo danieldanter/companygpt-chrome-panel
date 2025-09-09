@@ -961,7 +961,44 @@ class CompanyGPTChat {
     try {
       console.log("[App] Requesting page context...");
 
-      // Try to get context from content script
+      // Get current tab
+      const [tab] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+
+      if (!tab || !tab.id) {
+        throw new Error("No active tab found");
+      }
+
+      // Check if it's Google Docs
+      if (tab.url && tab.url.includes("docs.google.com/document")) {
+        console.log("[App] Google Docs detected, using script injection");
+
+        // Use script injection for Google Docs
+        const response = await chrome.runtime.sendMessage({
+          type: "INJECT_GOOGLE_DOCS_EXTRACTOR",
+          data: { tabId: tab.id },
+        });
+
+        if (response && response.success) {
+          console.log(
+            `[App] Injection successful: ${response.length} characters`
+          );
+          return {
+            success: true,
+            title: tab.title,
+            url: tab.url,
+            selectedText: "",
+            mainContent: response.content,
+            metadata: { isGoogleDocs: true },
+          };
+        } else {
+          console.error("[App] Injection failed:", response?.error);
+        }
+      }
+
+      // Fallback to regular content script approach
       const response = await chrome.runtime.sendMessage({
         type: "GET_PAGE_CONTEXT",
       });
@@ -971,29 +1008,19 @@ class CompanyGPTChat {
         return response;
       }
 
-      // Fallback to basic tab info
-      const [tab] = await chrome.tabs.query({
-        active: true,
-        currentWindow: true,
-      });
-
-      if (tab) {
-        const context = {
-          success: true, // ensure ContextManager accepts fallback
-          title: tab.title,
-          url: tab.url,
-          selectedText: "",
-          mainContent: "",
-          metadata: {},
-        };
-        console.log("[App] Using tab context:", context);
-        return context;
-      }
+      // Final fallback
+      return {
+        success: true,
+        title: tab.title,
+        url: tab.url,
+        selectedText: "",
+        mainContent: "",
+        metadata: {},
+      };
     } catch (error) {
       console.error("[App] Failed to get page context:", error);
+      return null;
     }
-
-    return { success: false, error: "Unable to get page context" };
   }
 
   async initializeChat() {

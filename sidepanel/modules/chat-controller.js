@@ -202,7 +202,9 @@ export class ChatController {
 
     // Build message content with context (only for first message)
     let messageContent = text;
-    if (this.messages.length === 0 && context) {
+    // To this (temporary for testing):
+    if (context) {
+      // Always add context if available
       // Add context to first message
       const contextString = this.buildContextString(context);
       if (contextString) {
@@ -301,28 +303,75 @@ export class ChatController {
   /**
    * Build context string from page context
    */
+  /**
+   * Build context string from page context
+   */
   buildContextString(context) {
+    console.log("[ChatController] === CONTEXT STRING BUILDING START ===");
+    console.log("[ChatController] Input context keys:", Object.keys(context));
+    console.log(
+      "[ChatController] Selected text length:",
+      context.selectedText?.length || 0
+    );
+    console.log(
+      "[ChatController] Main content length:",
+      context.mainContent?.length || 0
+    );
+    console.log("[ChatController] URL:", context.url);
+    console.log("[ChatController] Title:", context.title);
+
     const parts = [];
 
     if (context.selectedText) {
-      parts.push(
-        `[Kontext: Ausgewählter Text auf der Seite: "${context.selectedText}"]`
+      const selectedTextPart = `[Kontext: Ausgewählter Text auf der Seite: "${context.selectedText}"]`;
+      parts.push(selectedTextPart);
+      console.log(
+        "[ChatController] Added selected text context, length:",
+        selectedTextPart.length
       );
     } else if (context.url && context.title) {
-      parts.push(
-        `[Kontext: Der Nutzer befindet sich auf ${context.url} mit dem Titel "${context.title}"]`
+      const urlTitlePart = `[Kontext: Der Nutzer befindet sich auf ${context.url} mit dem Titel "${context.title}"]`;
+      parts.push(urlTitlePart);
+      console.log(
+        "[ChatController] Added URL/title context, length:",
+        urlTitlePart.length
       );
     }
 
     if (context.mainContent && !context.selectedText) {
-      // Only add main content if no selected text and it's short enough
-      const truncated = context.mainContent.substring(0, 500);
-      if (truncated.length > 100) {
-        parts.push(`[Seiteninhalt (Auszug): ${truncated}...]`);
-      }
+      // NO TRUNCATION - include the full content
+      const fullContentPart = `[Seiteninhalt (Vollständig): ${context.mainContent}]`;
+      parts.push(fullContentPart);
+      console.log(
+        "[ChatController] Added FULL main content, length:",
+        fullContentPart.length
+      );
+      console.log(
+        "[ChatController] Full content preview (first 200 chars):",
+        context.mainContent.substring(0, 200)
+      );
+      console.log(
+        "[ChatController] Full content preview (last 200 chars):",
+        context.mainContent.substring(
+          Math.max(0, context.mainContent.length - 200)
+        )
+      );
     }
 
-    return parts.join("\n");
+    const finalContextString = parts.join("\n");
+
+    console.log("[ChatController] === CONTEXT STRING BUILDING COMPLETE ===");
+    console.log("[ChatController] Total parts:", parts.length);
+    console.log(
+      "[ChatController] Final context string length:",
+      finalContextString.length
+    );
+    console.log(
+      "[ChatController] Final context preview (first 300 chars):",
+      finalContextString.substring(0, 300)
+    );
+
+    return finalContextString;
   }
 
   /**
