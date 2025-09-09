@@ -258,6 +258,49 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           break;
         }
 
+        // ADD THIS NEW CASE:
+        case "EXTRACT_GOOGLE_DOCS": {
+          const { docId } = request.data;
+
+          try {
+            debug("Extracting Google Docs content for:", docId);
+
+            const exportUrl = `https://docs.google.com/document/d/${docId}/export?format=txt`;
+            debug("Fetching from:", exportUrl);
+
+            const response = await fetch(exportUrl, {
+              method: "GET",
+              credentials: "include", // Use cookies from browser
+            });
+
+            if (!response.ok) {
+              throw new Error(
+                `HTTP ${response.status}: ${response.statusText}`
+              );
+            }
+
+            const textContent = await response.text();
+
+            debug(
+              `Google Docs extraction successful: ${textContent.length} characters`
+            );
+            debug("Content preview:", textContent.substring(0, 200) + "...");
+
+            sendResponse({
+              success: true,
+              content: textContent,
+              length: textContent.length,
+            });
+          } catch (error) {
+            console.error("Google Docs extraction failed:", error);
+            sendResponse({
+              success: false,
+              error: error.message,
+            });
+          }
+          break;
+        }
+
         default:
           debug("Unknown action:", action);
           sendResponse({ success: false, error: "Unknown action" });

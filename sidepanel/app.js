@@ -3,7 +3,9 @@ import { ChatController } from "./modules/chat-controller.js";
 import { MessageRenderer } from "./modules/message-renderer.js";
 import { ContextAnalyzer } from "./modules/context-analyzer.js";
 
-// Add this to your app.js file - Context Management System
+/* ---------------------------------------------------------
+   Simplified ContextManager (replacing previous version)
+--------------------------------------------------------- */
 
 class ContextManager {
   constructor(app) {
@@ -100,14 +102,18 @@ class ContextManager {
     this.setButtonState("loading");
 
     try {
-      // Get page context using existing method
+      // Get page context using the app's method
       const context = await this.app.getPageContext();
 
-      if (!context) {
-        throw new Error("No context available");
+      if (
+        !context ||
+        (Object.prototype.hasOwnProperty.call(context, "success") &&
+          !context.success)
+      ) {
+        throw new Error(context?.error || "No context available");
       }
 
-      // Process and clean the context
+      // Process the context
       const processedContext = this.processContext(context);
 
       // Store context
@@ -118,7 +124,10 @@ class ContextManager {
       this.setButtonState("loaded");
       this.showContextBar(processedContext);
 
-      console.log("[ContextManager] Context loaded:", processedContext);
+      console.log(
+        "[ContextManager] Context loaded successfully:",
+        processedContext
+      );
     } catch (error) {
       console.error("[ContextManager] Failed to load context:", error);
       this.setButtonState("error");
@@ -130,41 +139,19 @@ class ContextManager {
     }
   }
 
-  async processContext(rawContext) {
-    console.log("[ContextManager] === PROCESSING CONTEXT START ===");
-    console.log("[ContextManager] Processing raw context:", rawContext);
+  processContext(rawContext) {
+    console.log("[ContextManager] Processing context:", rawContext);
 
+    // Clean and process the text content
     let textContent = "";
-
-    if (rawContext.url && rawContext.url.includes("docs.google.com")) {
-      console.log(
-        "[ContextManager] Google Docs detected, using enhanced extraction"
-      );
-      textContent = await this.extractGoogleDocsContent(rawContext); // NOW PROPERLY AWAITED
-    } else {
-      console.log(
-        "[ContextManager] Non-Google Docs site, using standard extraction"
-      );
-      if (rawContext.mainContent) {
-        textContent = this.cleanText(rawContext.mainContent);
-      }
+    if (rawContext.mainContent) {
+      textContent = this.cleanText(rawContext.mainContent);
     }
 
     // Get selected text if available
     let selectedText = "";
     if (rawContext.selectedText) {
       selectedText = this.cleanText(rawContext.selectedText);
-      console.log(
-        "[ContextManager] Selected text found:",
-        selectedText.length,
-        "chars"
-      );
-    }
-
-    // If no content extracted, try fallback methods
-    if (!textContent && !selectedText) {
-      console.log("[ContextManager] No content extracted, trying fallback");
-      textContent = this.fallbackExtraction();
     }
 
     // Calculate word count
@@ -172,829 +159,25 @@ class ContextManager {
       .split(/\s+/)
       .filter((word) => word.length > 0).length;
 
-    console.log("[ContextManager] === FINAL EXTRACTION RESULTS ===");
-    console.log("[ContextManager] Word count:", wordCount);
-    console.log("[ContextManager] Text length:", textContent.length);
-    console.log("[ContextManager] Has selected text:", !!selectedText);
-    console.log(
-      "[ContextManager] Content preview:",
-      textContent.substring(0, 150) + "..."
-    );
-    console.log("[ContextManager] === PROCESSING CONTEXT END ===");
-
-    return {
+    const processedContext = {
       title: rawContext.title || "Untitled Page",
       url: rawContext.url || "",
       selectedText,
       mainContent: textContent,
       wordCount,
       timestamp: Date.now(),
+      isGoogleDocs: rawContext.metadata?.isGoogleDocs || false,
     };
-  }
 
-  // Add this new method to extract Google Docs content
-  async extractGoogleDocsContent(rawContext) {
-    console.log("[ContextManager] === GOOGLE DOCS EXTRACTION START ===");
-    console.log("[ContextManager] URL:", rawContext.url);
-    console.log("[ContextManager] Title:", rawContext.title);
-
-    let extractedText = "";
-
-    // PHASE 1: Try DOM extraction first (fast method)
-    console.log("[ContextManager] PHASE 1: Attempting DOM extraction...");
-    extractedText = this.tryDOMExtraction();
-
-    if (extractedText && extractedText.length > 50) {
-      console.log(
-        `[ContextManager] ✅ DOM extraction successful: ${extractedText.length} chars`
-      );
-      console.log(
-        "[ContextManager] DOM content preview:",
-        extractedText.substring(0, 100) + "..."
-      );
-      return this.cleanText(extractedText);
-    }
-
-    console.log(
-      "[ContextManager] ❌ DOM extraction failed or insufficient content"
-    );
-    console.log(`[ContextManager] DOM result length: ${extractedText.length}`);
-
-    // PHASE 2: Try Select All method (fallback) - NOW PROPERLY ASYNC
-    console.log(
-      "[ContextManager] PHASE 2: Attempting Select All extraction..."
-    );
-    try {
-      extractedText = await this.trySelectAllExtraction();
-
-      if (extractedText && extractedText.length > 50) {
-        console.log(
-          `[ContextManager] ✅ Select All extraction successful: ${extractedText.length} chars`
-        );
-        console.log(
-          "[ContextManager] Select All content preview:",
-          extractedText.substring(0, 100) + "..."
-        );
-        return this.cleanText(extractedText);
-      }
-
-      console.log("[ContextManager] ❌ Select All extraction also failed");
-      console.log(
-        `[ContextManager] Select All result length: ${
-          extractedText ? extractedText.length : 0
-        }`
-      );
-    } catch (error) {
-      console.error("[ContextManager] Select All extraction error:", error);
-    }
-
-    // PHASE 3: Final fallback to raw content
-    console.log("[ContextManager] PHASE 3: Using raw content fallback...");
-    if (rawContext.mainContent && rawContext.mainContent.length > 10) {
-      console.log(
-        `[ContextManager] ✅ Using raw mainContent: ${rawContext.mainContent.length} chars`
-      );
-      return this.cleanText(rawContext.mainContent);
-    }
-
-    console.log("[ContextManager] ❌ All extraction methods failed");
-    console.log("[ContextManager] === GOOGLE DOCS EXTRACTION END ===");
-    return "";
-  }
-
-  // Add this new method for DOM extraction
-  tryDOMExtraction() {
-    console.log("[ContextManager] Starting DOM extraction...");
-
-    const googleDocsSelectors = [
-      ".kix-appview-editor",
-      ".kix-paginateddocumentplugin",
-      ".kix-paragraphrenderer",
-      ".docs-texteventtarget-iframe",
-      '[role="textbox"]',
-      ".kix-wordhtmlgenerator-word-node",
-      // Additional selectors to try
-      ".kix-canvas-tile-content",
-      ".kix-canvas-tile",
-      '[contenteditable="true"]',
-      ".docs-editor-container",
-    ];
-
-    for (const selector of googleDocsSelectors) {
-      try {
-        const elements = document.querySelectorAll(selector);
-        console.log(
-          `[ContextManager] Selector "${selector}": found ${elements.length} elements`
-        );
-
-        if (elements.length > 0) {
-          const texts = Array.from(elements)
-            .map((el) => {
-              const text = this.extractTextFromElement(el);
-              console.log(
-                `[ContextManager] Element text length: ${text.length}`
-              );
-              return text;
-            })
-            .filter((text) => text && text.length > 10);
-
-          if (texts.length > 0) {
-            const combined = texts.join("\n\n");
-            console.log(
-              `[ContextManager] Combined DOM text: ${combined.length} chars`
-            );
-            if (combined.length > 50) {
-              return combined;
-            }
-          }
-        }
-      } catch (error) {
-        console.warn(
-          `[ContextManager] DOM extraction error with ${selector}:`,
-          error
-        );
-      }
-    }
-
-    console.log("[ContextManager] DOM extraction completed with no results");
-    return "";
-  }
-
-  // Add this new method for Select All extraction
-  // Replace the trySelectAllExtraction method in your ContextManager class
-
-  trySelectAllExtraction() {
-    console.log("[ContextManager] Starting Select All extraction...");
-
-    // ADD THESE DEBUG LINES HERE:
-    console.log("[Debug] Document URL:", document.URL);
-    console.log("[Debug] Document title:", document.title);
-    console.log("[Debug] Window location:", window.location.href);
-
-    return new Promise((resolve) => {
-      try {
-        // Store current selection to restore later
-        const originalSelection = window.getSelection().toString();
-        console.log(
-          "[ContextManager] Stored original selection:",
-          originalSelection.length,
-          "chars"
-        );
-
-        // METHOD 1: Try programmatic Ctrl+A simulation first
-        console.log("[ContextManager] METHOD 1: Trying Ctrl+A simulation...");
-
-        // Clear any existing selection
-        window.getSelection().removeAllRanges();
-
-        // Try to trigger Ctrl+A programmatically
-        const ctrlAEvent = new KeyboardEvent("keydown", {
-          key: "a",
-          code: "KeyA",
-          ctrlKey: true,
-          bubbles: true,
-          cancelable: true,
-        });
-
-        // Dispatch to document or active element
-        const activeElement = document.activeElement || document.body;
-        activeElement.dispatchEvent(ctrlAEvent);
-
-        // Wait for the simulated Ctrl+A to take effect
-        setTimeout(() => {
-          let selectedText = window.getSelection().toString();
-          console.log(
-            `[ContextManager] METHOD 1 result: ${selectedText.length} chars`
-          );
-
-          if (selectedText && selectedText.length > 100) {
-            console.log(
-              "[ContextManager] METHOD 1 successful - Ctrl+A simulation worked"
-            );
-            console.log(
-              "[ContextManager] Selected text preview:",
-              selectedText.substring(0, 200) + "..."
-            );
-
-            // Restore original selection
-            window.getSelection().removeAllRanges();
-            resolve(selectedText);
-            return;
-          }
-
-          // METHOD 2: Try document.execCommand('selectAll')
-          console.log(
-            "[ContextManager] METHOD 2: Trying execCommand selectAll..."
-          );
-
-          try {
-            window.getSelection().removeAllRanges();
-            document.execCommand("selectAll");
-
-            setTimeout(() => {
-              selectedText = window.getSelection().toString();
-              console.log(
-                `[ContextManager] METHOD 2 result: ${selectedText.length} chars`
-              );
-
-              if (selectedText && selectedText.length > 100) {
-                console.log(
-                  "[ContextManager] METHOD 2 successful - execCommand worked"
-                );
-                console.log(
-                  "[ContextManager] Selected text preview:",
-                  selectedText.substring(0, 200) + "..."
-                );
-
-                // Restore original selection
-                window.getSelection().removeAllRanges();
-                resolve(selectedText);
-                return;
-              }
-
-              // METHOD 3: Try range selection on document.body
-              console.log(
-                "[ContextManager] METHOD 3: Trying range selection on document.body..."
-              );
-
-              try {
-                window.getSelection().removeAllRanges();
-                const range = document.createRange();
-                range.selectNodeContents(document.body);
-                window.getSelection().addRange(range);
-
-                setTimeout(() => {
-                  selectedText = window.getSelection().toString();
-                  console.log(
-                    `[ContextManager] METHOD 3 result: ${selectedText.length} chars`
-                  );
-
-                  if (selectedText && selectedText.length > 50) {
-                    console.log(
-                      "[ContextManager] METHOD 3 successful - range selection worked"
-                    );
-                    console.log(
-                      "[ContextManager] Selected text preview:",
-                      selectedText.substring(0, 200) + "..."
-                    );
-
-                    // Clean up selection and resolve
-                    window.getSelection().removeAllRanges();
-                    resolve(selectedText);
-                    return;
-                  }
-
-                  // METHOD 4: Try focusing and then selecting
-                  console.log(
-                    "[ContextManager] METHOD 4: Trying focus + range selection..."
-                  );
-
-                  // Try to focus the document
-                  if (document.body.focus) {
-                    document.body.focus();
-                  }
-
-                  // Try to find any focusable element and focus it
-                  const focusableElements = document.querySelectorAll(
-                    '[contenteditable="true"], input, textarea, [tabindex]'
-                  );
-                  if (focusableElements.length > 0) {
-                    console.log(
-                      `[ContextManager] Found ${focusableElements.length} focusable elements`
-                    );
-                    focusableElements[0].focus();
-                  }
-
-                  setTimeout(() => {
-                    // Try Ctrl+A again after focusing
-                    const ctrlAEvent2 = new KeyboardEvent("keydown", {
-                      key: "a",
-                      code: "KeyA",
-                      ctrlKey: true,
-                      bubbles: true,
-                      cancelable: true,
-                    });
-
-                    (document.activeElement || document.body).dispatchEvent(
-                      ctrlAEvent2
-                    );
-
-                    setTimeout(() => {
-                      selectedText = window.getSelection().toString();
-                      console.log(
-                        `[ContextManager] METHOD 4 result: ${selectedText.length} chars`
-                      );
-
-                      if (selectedText && selectedText.length > 50) {
-                        console.log(
-                          "[ContextManager] METHOD 4 successful - focus + Ctrl+A worked"
-                        );
-                        console.log(
-                          "[ContextManager] Selected text preview:",
-                          selectedText.substring(0, 200) + "..."
-                        );
-                      } else {
-                        console.log(
-                          "[ContextManager] All methods failed - no text selected"
-                        );
-                      }
-
-                      // Restore original selection and resolve
-                      window.getSelection().removeAllRanges();
-                      resolve(selectedText || "");
-                    }, 300);
-                  }, 300);
-                }, 300);
-              } catch (rangeError) {
-                console.error("[ContextManager] METHOD 3 error:", rangeError);
-                resolve("");
-              }
-            }, 300);
-          } catch (execError) {
-            console.error("[ContextManager] METHOD 2 error:", execError);
-            resolve("");
-          }
-        }, 500); // Increased initial timeout for Google Docs
-      } catch (error) {
-        console.error("[ContextManager] Select All extraction error:", error);
-        resolve("");
-      }
-    });
-  }
-
-  // Add this helper method to find the best content element
-  // Replace the findBestContentElement method in your ContextManager class
-
-  findBestContentElement() {
-    console.log(
-      "[ContextManager] Finding best content element for Google Docs..."
-    );
-
-    // Google Docs specific selectors in order of preference
-    const googleDocsSelectors = [
-      // Primary Google Docs editor containers
-      ".kix-appview-editor-container",
-      ".kix-appview-editor",
-      ".docs-editor-container",
-      ".docs-editor",
-
-      // Document content areas
-      ".kix-paginateddocumentplugin",
-      ".kix-canvas-tile-content",
-      ".kix-canvas-tile",
-
-      // Text content containers
-      ".kix-paragraphrenderer-container",
-      ".kix-paragraphrenderer",
-      ".kix-lineview-text-block",
-
-      // Editable areas
-      '[role="textbox"][aria-label*="document"]',
-      '[role="textbox"][aria-label*="Document"]',
-      '[contenteditable="true"][role="textbox"]',
-
-      // Canvas and rendering layers
-      ".kix-canvas-tile-selection-layer",
-      ".kix-canvas-tile-layer",
-      ".kix-canvas-tile-content-layer",
-
-      // Document structure
-      ".kix-document-container",
-      ".kix-document",
-
-      // Fallback to any Google Docs element with substantial content
-      '[class*="kix-"][class*="content"]',
-      '[class*="kix-"][class*="text"]',
-      '[class*="docs-"][class*="editor"]',
-    ];
-
-    // Try each Google Docs specific selector
-    for (let i = 0; i < googleDocsSelectors.length; i++) {
-      const selector = googleDocsSelectors[i];
-
-      try {
-        const elements = document.querySelectorAll(selector);
-        console.log(
-          `[ContextManager] Selector "${selector}": found ${elements.length} elements`
-        );
-
-        if (elements.length > 0) {
-          // Try each element to find one with meaningful content
-          for (let j = 0; j < elements.length; j++) {
-            const element = elements[j];
-
-            const elementInfo = {
-              tagName: element.tagName,
-              className: element.className,
-              id: element.id,
-              ariaLabel: element.getAttribute("aria-label"),
-              role: element.getAttribute("role"),
-              textLength: (element.innerText || element.textContent || "")
-                .length,
-              hasChildren: element.children.length,
-              offsetWidth: element.offsetWidth,
-              offsetHeight: element.offsetHeight,
-            };
-
-            console.log(
-              `[ContextManager] Element ${j + 1} details:`,
-              elementInfo
-            );
-
-            // Check if this element looks like actual content
-            if (this.isGoodGoogleDocsElement(element, elementInfo)) {
-              console.log(
-                `[ContextManager] ✅ Selected element with selector: ${selector}`
-              );
-              return element;
-            }
-          }
-        }
-      } catch (error) {
-        console.warn(
-          `[ContextManager] Error checking selector ${selector}:`,
-          error
-        );
-      }
-    }
-
-    // If no Google Docs specific elements found, try alternative strategies
-    console.log(
-      "[ContextManager] No Google Docs elements found, trying alternative strategies..."
-    );
-
-    // Strategy 2: Look for iframes (Google Docs sometimes uses iframes)
-    const iframes = document.querySelectorAll("iframe");
-    console.log(`[ContextManager] Found ${iframes.length} iframes`);
-
-    for (let i = 0; i < iframes.length; i++) {
-      const iframe = iframes[i];
-      console.log(`[ContextManager] Iframe ${i + 1}:`, {
-        src: iframe.src,
-        name: iframe.name,
-        id: iframe.id,
-        className: iframe.className,
-      });
-
-      // Try to access iframe content (may fail due to CORS)
-      try {
-        const iframeDoc =
-          iframe.contentDocument || iframe.contentWindow.document;
-        if (iframeDoc) {
-          const iframeBody = iframeDoc.body;
-          if (
-            iframeBody &&
-            iframeBody.innerText &&
-            iframeBody.innerText.length > 100
-          ) {
-            console.log(
-              `[ContextManager] ✅ Found content in iframe: ${iframeBody.innerText.length} chars`
-            );
-            return iframeBody;
-          }
-        }
-      } catch (error) {
-        console.log(
-          `[ContextManager] Cannot access iframe content (CORS): ${error.message}`
-        );
-      }
-    }
-
-    // Strategy 3: Look for largest text container on page
-    console.log("[ContextManager] Trying largest text container strategy...");
-    const allElements = document.querySelectorAll("*");
-    let largestElement = null;
-    let largestTextLength = 0;
-
-    for (let i = 0; i < Math.min(allElements.length, 100); i++) {
-      // Limit to first 100 elements for performance
-      const element = allElements[i];
-
-      // Skip extension elements and common non-content elements
-      if (this.shouldSkipElement(element)) {
-        continue;
-      }
-
-      const textContent = element.innerText || element.textContent || "";
-      if (textContent.length > largestTextLength && textContent.length > 200) {
-        largestTextLength = textContent.length;
-        largestElement = element;
-      }
-    }
-
-    if (largestElement) {
-      console.log(
-        `[ContextManager] ✅ Found largest text element: ${largestTextLength} chars`
-      );
-      console.log("[ContextManager] Largest element:", {
-        tagName: largestElement.tagName,
-        className: largestElement.className,
-        id: largestElement.id,
-      });
-      return largestElement;
-    }
-
-    console.log(
-      "[ContextManager] ❌ No suitable content element found, using document.body as fallback"
-    );
-    return document.body;
-  }
-
-  // Add this helper method to check if an element is good for Google Docs content
-  isGoodGoogleDocsElement(element, elementInfo) {
-    // Skip if element is not visible
-    if (elementInfo.offsetWidth === 0 || elementInfo.offsetHeight === 0) {
-      console.log("[ContextManager] Skipping invisible element");
-      return false;
-    }
-
-    // Skip if element has no text content
-    if (elementInfo.textLength < 50) {
-      console.log(
-        `[ContextManager] Skipping element with insufficient text: ${elementInfo.textLength} chars`
-      );
-      return false;
-    }
-
-    // Prefer elements with Google Docs specific characteristics
-    const hasGoodClassName =
-      elementInfo.className &&
-      (elementInfo.className.includes("kix-") ||
-        elementInfo.className.includes("docs-") ||
-        elementInfo.className.includes("editor") ||
-        elementInfo.className.includes("content"));
-
-    const hasGoodRole =
-      elementInfo.role === "textbox" || elementInfo.role === "document";
-
-    const hasGoodAriaLabel =
-      elementInfo.ariaLabel &&
-      (elementInfo.ariaLabel.toLowerCase().includes("document") ||
-        elementInfo.ariaLabel.toLowerCase().includes("editor"));
-
-    // Score the element
-    let score = 0;
-    if (hasGoodClassName) score += 3;
-    if (hasGoodRole) score += 2;
-    if (hasGoodAriaLabel) score += 2;
-    if (elementInfo.textLength > 500) score += 2;
-    if (elementInfo.textLength > 1000) score += 1;
-
-    console.log(`[ContextManager] Element score: ${score}`, {
-      hasGoodClassName,
-      hasGoodRole,
-      hasGoodAriaLabel,
-      textLength: elementInfo.textLength,
+    console.log("[ContextManager] Context processed:", {
+      title: processedContext.title,
+      wordCount: processedContext.wordCount,
+      hasSelectedText: !!processedContext.selectedText,
+      isGoogleDocs: processedContext.isGoogleDocs,
+      contentLength: processedContext.mainContent.length,
     });
 
-    // Return true if score is high enough
-    return score >= 3;
-  }
-
-  // Add this helper method to skip irrelevant elements
-
-  shouldSkipElement(element) {
-    // Safe way to get className as string
-    const className =
-      element.className && element.className.toString
-        ? element.className.toString()
-        : element.className || "";
-
-    const id = element.id || "";
-    const tagName = element.tagName.toLowerCase();
-
-    // Skip extension elements
-    if (
-      className.includes("sidepanel") ||
-      className.includes("extension") ||
-      className.includes("chrome-extension") ||
-      id.includes("extension")
-    ) {
-      return true;
-    }
-
-    // Skip navigation, header, footer elements
-    if (
-      tagName === "nav" ||
-      tagName === "header" ||
-      tagName === "footer" ||
-      className.includes("nav") ||
-      className.includes("header") ||
-      className.includes("footer") ||
-      className.includes("menu")
-    ) {
-      return true;
-    }
-
-    // Skip script, style, meta elements
-    if (
-      tagName === "script" ||
-      tagName === "style" ||
-      tagName === "meta" ||
-      tagName === "link"
-    ) {
-      return true;
-    }
-
-    return false;
-  }
-
-  // Add this helper method to extract text from elements
-  extractTextFromElement(element) {
-    if (!element) return "";
-
-    // Try different text extraction methods
-    const methods = [
-      () => element.innerText,
-      () => element.textContent,
-      () => element.innerHTML.replace(/<[^>]*>/g, " "), // Strip HTML tags
-    ];
-
-    for (const method of methods) {
-      try {
-        const text = method();
-        if (text && text.trim().length > 0) {
-          return text.trim();
-        }
-      } catch (error) {
-        // Continue to next method
-      }
-    }
-
-    return "";
-  }
-
-  // Add this fallback extraction method
-  fallbackExtraction() {
-    console.log("[ContextManager] Attempting fallback extraction...");
-
-    // Try to get any visible text content from the page
-    const fallbackSelectors = [
-      "body",
-      "main",
-      '[role="main"]',
-      "article",
-      ".content",
-      "#content",
-    ];
-
-    for (const selector of fallbackSelectors) {
-      try {
-        const element = document.querySelector(selector);
-        if (element) {
-          const text = this.extractTextFromElement(element);
-          if (text && text.length > 50) {
-            // Only if we get meaningful content
-            console.log(
-              `[ContextManager] Fallback extraction successful with ${selector}`
-            );
-            return text;
-          }
-        }
-      } catch (error) {
-        console.warn(
-          `[ContextManager] Fallback failed for ${selector}:`,
-          error
-        );
-      }
-    }
-
-    return "";
-  }
-
-  // Add this new method to extract Google Docs content
-  async extractGoogleDocsContent(rawContext) {
-    console.log(
-      "[ContextManager] === NEW VERSION GOOGLE DOCS EXTRACTION START ==="
-    ); // Add this line
-    console.log("[ContextManager] URL:", rawContext.url);
-    console.log("[ContextManager] Title:", rawContext.title);
-
-    let extractedText = "";
-
-    // PHASE 1: Try DOM extraction first (fast method)
-    console.log("[ContextManager] PHASE 1: Attempting DOM extraction...");
-    extractedText = this.tryDOMExtraction();
-
-    if (extractedText && extractedText.length > 50) {
-      console.log(
-        `[ContextManager] ✅ DOM extraction successful: ${extractedText.length} chars`
-      );
-      console.log(
-        "[ContextManager] DOM content preview:",
-        extractedText.substring(0, 100) + "..."
-      );
-      return this.cleanText(extractedText);
-    }
-
-    console.log(
-      "[ContextManager] ❌ DOM extraction failed or insufficient content"
-    );
-    console.log(`[ContextManager] DOM result length: ${extractedText.length}`);
-
-    // PHASE 2: Try Select All method (fallback) - NOW PROPERLY ASYNC
-    console.log(
-      "[ContextManager] PHASE 2: Attempting Select All extraction..."
-    );
-    try {
-      extractedText = await this.trySelectAllExtraction();
-
-      if (extractedText && extractedText.length > 50) {
-        console.log(
-          `[ContextManager] ✅ Select All extraction successful: ${extractedText.length} chars`
-        );
-        console.log(
-          "[ContextManager] Select All content preview:",
-          extractedText.substring(0, 100) + "..."
-        );
-        return this.cleanText(extractedText);
-      }
-
-      console.log("[ContextManager] ❌ Select All extraction also failed");
-      console.log(
-        `[ContextManager] Select All result length: ${
-          extractedText ? extractedText.length : 0
-        }`
-      );
-    } catch (error) {
-      console.error("[ContextManager] Select All extraction error:", error);
-    }
-
-    // PHASE 3: Final fallback to raw content
-    console.log("[ContextManager] PHASE 3: Using raw content fallback...");
-    if (rawContext.mainContent && rawContext.mainContent.length > 10) {
-      console.log(
-        `[ContextManager] ✅ Using raw mainContent: ${rawContext.mainContent.length} chars`
-      );
-      return this.cleanText(rawContext.mainContent);
-    }
-
-    console.log("[ContextManager] ❌ All extraction methods failed");
-    console.log("[ContextManager] === GOOGLE DOCS EXTRACTION END ===");
-    return "";
-  }
-
-  // Add this helper method to extract text from elements
-  extractTextFromElement(element) {
-    if (!element) return "";
-
-    // Try different text extraction methods
-    const methods = [
-      () => element.innerText,
-      () => element.textContent,
-      () => element.innerHTML.replace(/<[^>]*>/g, " "), // Strip HTML tags
-    ];
-
-    for (const method of methods) {
-      try {
-        const text = method();
-        if (text && text.trim().length > 0) {
-          return text.trim();
-        }
-      } catch (error) {
-        // Continue to next method
-      }
-    }
-
-    return "";
-  }
-
-  // Add this fallback extraction method
-  fallbackExtraction() {
-    console.log("[ContextManager] Attempting fallback extraction...");
-
-    // Try to get any visible text content from the page
-    const fallbackSelectors = [
-      "body",
-      "main",
-      '[role="main"]',
-      "article",
-      ".content",
-      "#content",
-    ];
-
-    for (const selector of fallbackSelectors) {
-      try {
-        const element = document.querySelector(selector);
-        if (element) {
-          const text = this.extractTextFromElement(element);
-          if (text && text.length > 50) {
-            // Only if we get meaningful content
-            console.log(
-              `[ContextManager] Fallback extraction successful with ${selector}`
-            );
-            return text;
-          }
-        }
-      } catch (error) {
-        console.warn(
-          `[ContextManager] Fallback failed for ${selector}:`,
-          error
-        );
-      }
-    }
-
-    return "";
+    return processedContext;
   }
 
   cleanText(text) {
@@ -1042,8 +225,18 @@ class ContextManager {
   showContextBar(context) {
     if (!this.contextBar || !this.contextText) return;
 
+    // Create context info text
+    let contextInfo = `${context.title}`;
+
+    if (context.wordCount > 0) {
+      contextInfo += ` (${context.wordCount} words)`;
+    }
+
+    if (context.isGoogleDocs) {
+      contextInfo += ` • Google Docs`;
+    }
+
     // Update context text
-    const contextInfo = `${context.title} (${context.wordCount} words)`;
     this.contextText.textContent = contextInfo;
 
     // Show context bar
@@ -1091,7 +284,10 @@ class ContextManager {
   }
 }
 
-// Add this CSS class for the pulse effect
+/* ---------------------------------------------------------
+   Subtle pulse CSS for context button
+--------------------------------------------------------- */
+
 const contextAvailableCSS = `
 .context-load-btn.context-available {
   animation: contextPulse 2s ease-in-out;
@@ -1114,7 +310,9 @@ const style = document.createElement("style");
 style.textContent = contextAvailableCSS;
 document.head.appendChild(style);
 
-// app.js — CompanyGPTChat (updated to use ContextManager and no automatic context switching)
+/* ---------------------------------------------------------
+   CompanyGPTChat (wired to simplified ContextManager)
+--------------------------------------------------------- */
 
 class CompanyGPTChat {
   constructor() {
@@ -1131,8 +329,11 @@ class CompanyGPTChat {
     this.lastKnownDomain = null;
     this.sessionStartTime = null;
 
-    // NEW: ContextManager instance
+    // ContextManager instance
     this.contextManager = null;
+
+    // Cache UI refs
+    this.elements = {};
   }
 
   async initialize() {
@@ -1149,10 +350,7 @@ class CompanyGPTChat {
       // Setup event listeners
       this.setupEventListeners();
 
-      // Load initial context
-      await this.loadPageContext();
-
-      // Initialize context manager AFTER UI setup and initial context
+      // Initialize ContextManager AFTER UI setup
       this.contextManager = new ContextManager(this);
 
       // Check authentication (this will show login overlay if needed)
@@ -1392,7 +590,7 @@ class CompanyGPTChat {
   }
 
   async handleLogin() {
-    console.log("[App] Opening login page");
+    console.log("[App] Opening login page]");
 
     try {
       let loginUrl = "";
@@ -1473,7 +671,7 @@ class CompanyGPTChat {
 
   // === AUTH FLOW ===
   async recheckAuth() {
-    console.log("[App] Rechecking authentication...");
+    console.log("[App] Rechecking authentication...]");
 
     // Prevent multiple simultaneous checks
     if (this.authCheckInProgress) {
@@ -1600,7 +798,7 @@ class CompanyGPTChat {
 
   // Resilient auth check
   async checkAuth() {
-    console.log("[App] Checking authentication...");
+    console.log("[App] Checking authentication...]");
 
     try {
       let isAuth = false;
@@ -1689,70 +887,6 @@ class CompanyGPTChat {
     }
   }
 
-  // === CONTEXT (lightweight) ===
-  async loadPageContext() {
-    if (!this.loadButton) return;
-
-    console.log("[ContextManager] === LOAD PAGE CONTEXT START ===");
-
-    // Set loading state
-    this.setButtonState("loading");
-
-    try {
-      // Get page context using existing method
-      const context = await this.app.getPageContext();
-      console.log("[ContextManager] Raw context received:", context);
-
-      if (!context) {
-        throw new Error("No context available");
-      }
-
-      // Process and clean the context (now properly awaited)
-      console.log("[ContextManager] About to process context...");
-      const processedContext = await this.processContext(context);
-      console.log(
-        "[ContextManager] Context processing completed:",
-        processedContext
-      );
-
-      // Store context
-      this.currentContext = processedContext;
-      this.isLoaded = true;
-
-      // Update UI
-      this.setButtonState("loaded");
-      this.showContextBar(processedContext);
-
-      console.log("[ContextManager] === LOAD PAGE CONTEXT SUCCESS ===");
-      console.log(
-        "[ContextManager] Final processed context:",
-        processedContext
-      );
-    } catch (error) {
-      console.error("[ContextManager] === LOAD PAGE CONTEXT FAILED ===");
-      console.error("[ContextManager] Error details:", error);
-      this.setButtonState("error");
-
-      // Reset after 3 seconds
-      setTimeout(() => {
-        this.setButtonState("default");
-      }, 3000);
-    }
-  }
-
-  updateContextDisplay() {
-    // Context is handled internally; add UI if needed later
-  }
-
-  extractDomain(url) {
-    try {
-      const urlObj = new URL(url);
-      return urlObj.hostname;
-    } catch {
-      return "";
-    }
-  }
-
   // === CHAT ===
   async sendMessage() {
     const message = this.elements.messageInput?.value?.trim();
@@ -1780,7 +914,6 @@ class CompanyGPTChat {
     // No automatic context switching — rely on ContextManager if user loaded one
     await this.processSendMessage(message);
   }
-  // Replace the entire processSendMessage method in your app.js with this:
 
   async processSendMessage(message) {
     // Clear input and reset height
@@ -1823,6 +956,7 @@ class CompanyGPTChat {
       this.addMessage(`Fehler: ${error.message}`, "error");
     }
   }
+
   async getPageContext() {
     try {
       console.log("[App] Requesting page context...");
@@ -1845,10 +979,12 @@ class CompanyGPTChat {
 
       if (tab) {
         const context = {
+          success: true, // ensure ContextManager accepts fallback
           title: tab.title,
           url: tab.url,
           selectedText: "",
           mainContent: "",
+          metadata: {},
         };
         console.log("[App] Using tab context:", context);
         return context;
@@ -1857,7 +993,7 @@ class CompanyGPTChat {
       console.error("[App] Failed to get page context:", error);
     }
 
-    return null;
+    return { success: false, error: "Unable to get page context" };
   }
 
   async initializeChat() {
@@ -1954,14 +1090,15 @@ class CompanyGPTChat {
   // === BROWSER/TABS/MSG ===
   async handleTabChange(tabId) {
     console.log("[App] Tab changed:", tabId);
-    await this.loadPageContext();
+    // Let ContextManager handle loading/clearing context
+    this.contextManager?.loadPageContext();
   }
 
   handleBackgroundMessage(message) {
     switch (message.type) {
       case "TAB_INFO":
         this.currentTabInfo = message.data;
-        this.loadPageContext();
+        this.contextManager?.loadPageContext();
         break;
       case "AUTH_STATE_CHANGED":
         // Re-check auth when auth state changes
