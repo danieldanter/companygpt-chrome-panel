@@ -236,6 +236,66 @@ export class MessageRenderer {
 
     return html;
   }
+  // message-renderer.js
+  renderWithActions(content, intent, context) {
+    const html = this.renderMarkdown(content);
+
+    // Choose actions based on intent and context
+    let actions = [];
+
+    switch (intent) {
+      case "email-reply":
+        actions = [
+          { icon: "📋", label: "Kopieren", action: "copy" },
+          { icon: "↩️", label: "Als Antwort einfügen", action: "gmail-reply" },
+        ];
+        break;
+
+      case "email-new":
+        actions = [
+          { icon: "📋", label: "Kopieren", action: "copy" },
+          { icon: "✉️", label: "Neue E-Mail", action: "gmail-compose" },
+        ];
+        break;
+
+      case "doc-summary":
+        actions = [
+          { icon: "📋", label: "Kopieren", action: "copy" },
+          { icon: "📄", label: "Als Kommentar", action: "docs-comment" },
+        ];
+        break;
+
+      default:
+        // Just copy for general content
+        actions = [{ icon: "📋", label: "Kopieren", action: "copy" }];
+    }
+
+    return this.wrapWithActionButtons(html, content, actions);
+  }
+
+  wrapWithActionButtons(html, originalContent, actions) {
+    const actionButtons = actions
+      .map(
+        (action) => `
+      <button class="action-btn ${action.action}-btn" 
+              data-content="${this.escapeHtml(originalContent)}"
+              data-action="${action.action}">
+        ${action.icon} ${action.label}
+      </button>
+    `
+      )
+      .join("");
+
+    return `
+      <div class="message-with-actions">
+        <div class="message-content">${html}</div>
+        <div class="action-buttons">
+          ${actionButtons}
+        </div>
+      </div>
+    `;
+  }
+
   /**
    * Render permission request UI
    * @param {Object} message - Message with permission data

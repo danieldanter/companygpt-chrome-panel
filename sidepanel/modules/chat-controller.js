@@ -9,6 +9,7 @@ export class ChatController {
     this.isInitialized = false;
     this.isStreaming = false;
     this.abortController = null;
+    this.lastUserIntent = null; // Add this line to track intent
 
     // CompanyGPT specific data
     this.folderId = null;
@@ -180,6 +181,34 @@ export class ChatController {
     };
   }
 
+  // chat-controller.js - PROPER state-based intent detection
+
+  detectIntent(text, context) {
+    // Just check the context SOURCE, not the words!
+
+    if (context?.isGmail || context?.sourceType === "gmail") {
+      // We're in Gmail context - show email actions
+      return "email-reply";
+    }
+
+    if (context?.isGoogleDocs || context?.sourceType === "docs") {
+      // We're in Docs context - show doc actions
+      return "doc-actions";
+    }
+
+    if (context?.sourceType === "calendar") {
+      // We're in Calendar context - show calendar actions
+      return "calendar-actions";
+    }
+
+    // No special context loaded
+    return "general";
+  }
+
+  getLastUserIntent() {
+    return this.lastUserIntent;
+  }
+
   /**
    * Send a message to the CompanyGPT API
    */
@@ -191,6 +220,9 @@ export class ChatController {
     if (this.isStreaming) {
       throw new Error("Already processing a message");
     }
+    // DETECT AND STORE INTENT
+    this.lastUserIntent = this.detectIntent(text, context);
+    this.log("Detected intent:", this.lastUserIntent);
 
     this.log("Sending message:", text);
     this.log("Context:", context);
@@ -214,12 +246,14 @@ export class ChatController {
       }
     }
 
-    // Create user message object
+    const intent = this.detectIntent(text, context);
+
+    // Store intent with message
     const userMessage = {
       role: "user",
-      content: messageContent,
-      references: [],
-      sources: [],
+      content: text,
+      intent: intent, // 'email-reply', 'email-new', 'summarize', etc.
+      context: context,
     };
 
     // Add to messages array

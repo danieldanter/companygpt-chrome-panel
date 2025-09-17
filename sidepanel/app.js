@@ -704,11 +704,69 @@ class CompanyGPTChat {
     if (role === "system") {
       messageEl.innerHTML = `<span class="system-icon">ℹ️</span> ${content}`;
     } else if (role === "assistant") {
-      // Just use markdown renderer - let it handle all preprocessing
-      if (this.messageRenderer) {
-        messageEl.innerHTML = this.messageRenderer.renderMarkdown(content);
+      // Get last user intent
+      const lastUserIntent = this.chatController?.getLastUserIntent
+        ? this.chatController.getLastUserIntent()
+        : null;
+
+      // Added debug logs
+      console.log("[App] Last user intent:", lastUserIntent);
+
+      if (lastUserIntent && lastUserIntent !== "general") {
+        console.log("[App] Should show buttons for intent:", lastUserIntent);
+
+        // Process markdown first
+        const processedContent = this.messageRenderer.renderMarkdown(content);
+
+        // Create container with action buttons
+        const containerDiv = document.createElement("div");
+        containerDiv.className = "message-with-actions";
+
+        // Add content
+        const contentDiv = document.createElement("div");
+        contentDiv.className = "message-content";
+        contentDiv.innerHTML = processedContent;
+        containerDiv.appendChild(contentDiv);
+
+        // Add action buttons
+        const buttonsDiv = document.createElement("div");
+        buttonsDiv.className = "action-buttons";
+
+        // Copy button (always present)
+        const copyBtn = document.createElement("button");
+        copyBtn.className = "action-btn copy-btn";
+        copyBtn.innerHTML = "📋 Kopieren";
+        copyBtn.onclick = () => {
+          navigator.clipboard.writeText(content);
+          copyBtn.innerHTML = "✅ Kopiert!";
+          copyBtn.classList.add("success");
+          setTimeout(() => {
+            copyBtn.innerHTML = "📋 Kopieren";
+            copyBtn.classList.remove("success");
+          }, 2000);
+        };
+        buttonsDiv.appendChild(copyBtn);
+
+        // Add intent-specific buttons
+        if (lastUserIntent === "email-reply") {
+          const replyBtn = document.createElement("button");
+          replyBtn.className = "action-btn gmail-reply-btn";
+          replyBtn.innerHTML = "↩️ Als Antwort einfügen";
+          replyBtn.onclick = () => this.handleGmailReply(content);
+          buttonsDiv.appendChild(replyBtn);
+        } else if (lastUserIntent === "email-new") {
+          const composeBtn = document.createElement("button");
+          composeBtn.className = "action-btn gmail-compose-btn";
+          composeBtn.innerHTML = "✉️ Neue E-Mail";
+          composeBtn.onclick = () => this.handleGmailCompose(content);
+          buttonsDiv.appendChild(composeBtn);
+        }
+
+        containerDiv.appendChild(buttonsDiv);
+        messageEl.appendChild(containerDiv);
       } else {
-        messageEl.innerHTML = content.replace(/\n/g, "<br>");
+        // Just use markdown renderer without actions
+        messageEl.innerHTML = this.messageRenderer.renderMarkdown(content);
       }
     } else {
       // User messages and errors as plain text
@@ -717,6 +775,100 @@ class CompanyGPTChat {
 
     this.elements.messagesContainer?.appendChild(messageEl);
     this.scrollToBottom();
+  }
+
+  // Add these handler methods to app.js
+  // app.js - Make sure handleGmailReply is correct
+
+  async handleGmailReply(content) {
+    console.log("[App] Handling Gmail reply");
+
+    // Parse email content
+    const emailData = this.parseEmailContent(content);
+    console.log("[App] Parsed email data:", emailData);
+
+    try {
+      // Find Gmail tab
+      const tabs = await chrome.tabs.query({});
+      const gmailTab = tabs.find((tab) => tab.url?.includes("mail.google.com"));
+
+      if (gmailTab) {
+        console.log("[App] Found Gmail tab:", gmailTab.id);
+
+        // Send message to Gmail tab to insert reply
+        const response = await chrome.tabs.sendMessage(gmailTab.id, {
+          action: "INSERT_EMAIL_REPLY",
+          data: emailData,
+        });
+
+        console.log("[App] Insert response:", response);
+
+        // Focus Gmail tab
+        await chrome.tabs.update(gmailTab.id, { active: true });
+      } else {
+        console.log("[App] No Gmail tab found, opening new one");
+
+        // Open Gmail compose with content
+        const composeUrl = `https://mail.google.com/mail/?view=cm&su=${encodeURIComponent(
+          emailData.subject
+        )}&body=${encodeURIComponent(emailData.body)}`;
+        await chrome.tabs.create({ url: composeUrl });
+      }
+    } catch (error) {
+      console.error("[App] Error inserting Gmail reply:", error);
+
+      // Fallback to clipboard
+      navigator.clipboard.writeText(content);
+      alert("Email copied to clipboard. Could not insert directly into Gmail.");
+    }
+  }
+
+  async handleGmailCompose(content) {
+    console.log("[App] Handling Gmail compose");
+
+    const emailData = this.parseEmailContent(content);
+    const composeUrl = `https://mail.google.com/mail/?view=cm&su=${encodeURIComponent(
+      emailData.subject
+    )}&body=${encodeURIComponent(emailData.body)}`;
+    chrome.tabs.create({ url: composeUrl });
+  }
+
+  // app.js - Update parseEmailContent to better handle formatting
+
+  parseEmailContent(text) {
+    // First, clean up the response from the AI
+    let cleanText = text;
+
+    // Remove quotes if wrapped
+    if (cleanText.startsWith('"') && cleanText.endsWith('"')) {
+      cleanText = cleanText.slice(1, -1);
+    }
+
+    // Replace literal \n with actual newlines
+    cleanText = cleanText.replace(/\\n/g, "\n");
+
+    // Parse subject and body
+    const lines = cleanText.split("\n");
+    let subject = "";
+    let body = "";
+    let foundSubject = false;
+
+    for (const line of lines) {
+      if (!foundSubject && line.startsWith("Subject:")) {
+        subject = line.replace("Subject:", "").trim();
+        foundSubject = true;
+      } else if (foundSubject || !line.startsWith("Subject:")) {
+        body += line + "\n";
+      }
+    }
+
+    // Clean up body - remove leading/trailing whitespace
+    body = body.trim();
+
+    return {
+      subject: subject || "Kein Betreff",
+      body: body,
+    };
   }
 
   // Add streaming message support
@@ -778,6 +930,77 @@ class CompanyGPTChat {
     // Replace with final formatted HTML
     messageEl.className = "message assistant";
     messageEl.innerHTML = finalHTML;
+
+    // --- Add action buttons if needed (after streaming completes) ---
+    const lastUserIntent = this.chatController?.getLastUserIntent
+      ? this.chatController.getLastUserIntent()
+      : null;
+
+    console.log("[App] Stream complete, intent:", lastUserIntent);
+
+    if (lastUserIntent && lastUserIntent !== "general") {
+      // Avoid duplicating wrapper if already present
+      const alreadyWrapped = messageEl.querySelector(".message-with-actions");
+      if (!alreadyWrapped) {
+        // Prepare buttons
+        const buttonsDiv = document.createElement("div");
+        buttonsDiv.className = "action-buttons";
+
+        // Copy button
+        const copyBtn = document.createElement("button");
+        copyBtn.className = "action-btn copy-btn";
+        copyBtn.innerHTML = "📋 Kopieren";
+        copyBtn.onclick = async () => {
+          try {
+            await navigator.clipboard.writeText(content);
+            copyBtn.innerHTML = "✅ Kopiert!";
+            copyBtn.classList.add("success");
+          } catch (err) {
+            console.error("[App] Clipboard copy failed:", err);
+            copyBtn.innerHTML = "⚠️ Fehler";
+            copyBtn.classList.add("error");
+          } finally {
+            setTimeout(() => {
+              copyBtn.innerHTML = "📋 Kopieren";
+              copyBtn.classList.remove("success", "error");
+            }, 2000);
+          }
+        };
+        buttonsDiv.appendChild(copyBtn);
+
+        // Intent-specific buttons
+        if (lastUserIntent === "email-reply") {
+          const replyBtn = document.createElement("button");
+          replyBtn.className = "action-btn gmail-reply-btn";
+          replyBtn.innerHTML = "↩️ Als Antwort einfügen";
+          replyBtn.onclick = () => this.handleGmailReply(content);
+          buttonsDiv.appendChild(replyBtn);
+        } else if (lastUserIntent === "email-new") {
+          const composeBtn = document.createElement("button");
+          composeBtn.className = "action-btn gmail-compose-btn";
+          composeBtn.innerHTML = "✉️ Neue E-Mail";
+          composeBtn.onclick = () => this.handleGmailCompose(content);
+          buttonsDiv.appendChild(composeBtn);
+        }
+
+        // Wrap existing content and add buttons
+        const currentContent = messageEl.innerHTML; // this is finalHTML
+        messageEl.innerHTML = "";
+
+        const containerDiv = document.createElement("div");
+        containerDiv.className = "message-with-actions";
+
+        const contentDiv = document.createElement("div");
+        contentDiv.className = "message-content";
+        contentDiv.innerHTML = currentContent;
+
+        containerDiv.appendChild(contentDiv);
+        containerDiv.appendChild(buttonsDiv);
+
+        messageEl.appendChild(containerDiv);
+      }
+    }
+
     this.scrollToBottom();
   }
 

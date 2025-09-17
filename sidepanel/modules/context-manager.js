@@ -429,16 +429,19 @@ export class ContextManager {
     // Flags
     const url = rawContext?.url || "";
     const pageType = rawContext?.pageType || "";
+    const isGmail =
+      !!rawContext?.metadata?.isGmail ||
+      rawContext?.pageType === "gmail" ||
+      rawContext?.siteType === "gmail" || // Add this check
+      rawContext?.hostname?.includes("mail.google.com") || // Add this check
+      rawContext?.url?.includes("mail.google.com");
 
     const isGoogleDocs =
       !!rawContext?.metadata?.isGoogleDocs ||
-      pageType === "googleDocs" ||
-      /(^|\.)docs\.google\.com\/document/.test(url);
-
-    const isGmail =
-      !!rawContext?.metadata?.isGmail ||
-      pageType === "gmail" ||
-      /(^|\.)mail\.google\.com/.test(url);
+      rawContext?.pageType === "googleDocs" ||
+      rawContext?.siteType === "google-docs" || // Add this check
+      rawContext?.hostname?.includes("docs.google.com") || // Add this check
+      rawContext?.url?.includes("docs.google.com");
 
     const extractionMethod =
       rawContext?.extractionMethod ||
@@ -454,7 +457,7 @@ export class ContextManager {
       wordCount,
       timestamp: Date.now(),
       isGoogleDocs,
-      isGmail,
+      isGmail, // Make sure this is included
       extractionMethod,
       metadata: rawContext?.metadata || {},
       summary: this.generateContentSummary(textContent),
@@ -470,7 +473,10 @@ export class ContextManager {
       method: processedContext.extractionMethod,
       contentLength: processedContext.mainContent.length,
     });
-
+    console.log(
+      "[ContextManager] Context processed - isGmail:",
+      processedContext.isGmail
+    );
     return processedContext;
   }
 
@@ -688,7 +694,27 @@ export class ContextManager {
       return null;
     }
 
-    return this.currentContext;
+    // Enhanced context with state info
+    return {
+      ...this.currentContext,
+      sourceType: this.detectSourceType(),
+      isActive: this.isSourceStillActive(),
+    };
+  }
+
+  // ADD these new methods after getContextForMessage():
+  detectSourceType() {
+    if (this.currentContext?.isGmail) return "gmail";
+    if (this.currentContext?.isGoogleDocs) return "docs";
+    if (this.currentContext?.url?.includes("calendar.google.com"))
+      return "calendar";
+    return "web";
+  }
+
+  async isSourceStillActive() {
+    // Check if the tab we extracted from is still open
+    const tabs = await chrome.tabs.query({});
+    return tabs.some((tab) => tab.url === this.currentContext?.url);
   }
 
   hasContext() {

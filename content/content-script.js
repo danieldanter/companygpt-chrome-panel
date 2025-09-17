@@ -119,9 +119,24 @@
       }
     }
 
+    // content/content-script.js - Update the setupMessageListener method
+
     setupMessageListener() {
       chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-        // Handle async responses properly
+        // Handle Gmail-specific actions
+        if (request.action === "INSERT_EMAIL_REPLY") {
+          console.log("[ContentExtractor] Received INSERT_EMAIL_REPLY request");
+
+          if (this.hostname.includes("mail.google.com")) {
+            this.insertEmailReply(request.data);
+            sendResponse({ success: true });
+          } else {
+            sendResponse({ success: false, error: "Not on Gmail" });
+          }
+          return true;
+        }
+
+        // Your existing message handling...
         const handleAsync = async () => {
           try {
             console.log(
@@ -131,24 +146,9 @@
             switch (request.action) {
               case "ping":
                 return { status: "ready", type: this.siteConfig.type };
-
               case "EXTRACT_CONTENT":
                 return await this.extractContent(request.options);
-
-              case "GET_SELECTED_TEXT":
-                return { selectedText: window.getSelection().toString() };
-
-              case "GET_SITE_INFO":
-                return {
-                  url: this.url,
-                  hostname: this.hostname,
-                  title: document.title,
-                  siteConfig: this.siteConfig,
-                  extractionCount: this.extractionCount,
-                };
-
-              default:
-                return { error: "Unknown action" };
+              // ... rest of your cases
             }
           } catch (error) {
             console.error("[ContentExtractor] Error:", error);
@@ -156,10 +156,95 @@
           }
         };
 
-        // Execute async and send response
         handleAsync().then(sendResponse);
-        return true; // Keep channel open for async response
+        return true;
       });
+    }
+
+    // Add this new method to ContentExtractor class
+    // content/content-script.js - Update the insertEmailReply method
+
+    // content/content-script.js - Fix the insertEmailReply method
+
+    insertEmailReply(emailData) {
+      console.log("[ContentExtractor] Inserting email reply:", emailData);
+
+      // Click the reply button
+      const replyButton =
+        document.querySelector('[aria-label*="Reply"]') ||
+        document.querySelector('[aria-label*="Antworten"]') ||
+        document.querySelector('[data-tooltip*="Reply"]');
+
+      if (replyButton) {
+        replyButton.click();
+
+        // Wait for compose area to appear
+        setTimeout(() => {
+          // Find the compose area
+          const composeBody =
+            document.querySelector(
+              'div[role="textbox"][aria-label*="Message Body"]'
+            ) ||
+            document.querySelector('div[role="textbox"][g_editable="true"]') ||
+            document.querySelector(
+              'div[contenteditable="true"][aria-label*="Nachricht"]'
+            );
+
+          if (composeBody) {
+            // Clean up the email content
+            let cleanedBody = emailData.body;
+
+            // Remove Subject line if it exists
+            cleanedBody = cleanedBody.replace(/^Subject:.*?\n+/i, "");
+
+            // Remove quotes if wrapped
+            if (cleanedBody.startsWith('"') && cleanedBody.endsWith('"')) {
+              cleanedBody = cleanedBody.slice(1, -1);
+            }
+
+            // IMPORTANT: Convert newlines to HTML breaks
+            // First handle multiple newlines (paragraphs)
+            cleanedBody = cleanedBody.replace(
+              /\n\n+/g,
+              "</div><div><br></div><div>"
+            );
+            // Then handle single newlines
+            cleanedBody = cleanedBody.replace(/\n/g, "</div><div>");
+
+            // Wrap in div tags for Gmail
+            cleanedBody = "<div>" + cleanedBody + "</div>";
+
+            // Clean up any empty divs at the start
+            cleanedBody = cleanedBody.replace(/^(<div><\/div>)+/, "");
+
+            // Set the HTML content
+            composeBody.innerHTML = cleanedBody;
+
+            // Trigger input event so Gmail recognizes the change
+            composeBody.dispatchEvent(new Event("input", { bubbles: true }));
+
+            // Move cursor to end
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(composeBody);
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+
+            // Visual feedback
+            composeBody.style.backgroundColor = "#ffffcc";
+            setTimeout(() => {
+              composeBody.style.backgroundColor = "";
+            }, 2000);
+
+            console.log("[ContentExtractor] Email reply inserted successfully");
+          } else {
+            console.error("[ContentExtractor] Could not find compose body");
+          }
+        }, 1000);
+      } else {
+        // Fallback code...
+      }
     }
 
     async extractContent(options = {}) {
@@ -339,10 +424,12 @@
       return {
         content: formattedContent,
         selectedText,
+        siteType: "gmail", // Make sure this is set
         metadata: {
           method: "gmail-extraction",
           messageCount: messages.length,
           hasSubject: !!subject,
+          isGmail: true, // Add this explicitly
           messages: messages.map((m) => ({
             sender: m.sender,
             timestamp: m.timestamp,
