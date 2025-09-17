@@ -134,15 +134,10 @@ export class ContextManager {
   }
 
   /**
-   * Extract context from current page
-   * Handles both Google Docs and regular pages
-   */
-  /**
    * Extract context from current page using universal injection
    */
   async extractPageContext() {
     try {
-      // Get current active tab
       const [tab] = await chrome.tabs.query({
         active: true,
         currentWindow: true,
@@ -152,18 +147,53 @@ export class ContextManager {
         throw new Error("No active tab found");
       }
 
-      console.log("[ContextManager] Using universal extractor for:", tab.url);
+      console.log("[ContextManager] Extracting from:", tab.url);
 
-      // Use universal extraction for ALL page types
+      // First, try universal extraction
       const response = await chrome.runtime.sendMessage({
         type: "INJECT_UNIVERSAL_EXTRACTOR",
         data: { tabId: tab.id },
       });
 
       if (response && response.success) {
-        console.log(
-          `[ContextManager] Universal extraction successful: ${response.length} characters (${response.pageType})`
-        );
+        // Check if it's SharePoint and needs API extraction
+        if (
+          response.metadata?.isSharePoint &&
+          response.metadata?.needsApiExtraction
+        ) {
+          console.log(
+            "[ContextManager] SharePoint document detected, extracting via API..."
+          );
+
+          this.setButtonState("loading");
+
+          // Extract the actual document content via API
+          const docResponse = await chrome.runtime.sendMessage({
+            type: "EXTRACT_SHAREPOINT_DOCUMENT",
+            data: response.metadata.extractionParams,
+          });
+
+          if (docResponse && docResponse.success) {
+            console.log(
+              "[ContextManager] SharePoint content extracted successfully!"
+            );
+            response.mainContent = docResponse.content;
+            response.metadata.extractedVia = docResponse.method || "api";
+          } else {
+            console.log(
+              "[ContextManager] SharePoint extraction failed:",
+              docResponse?.error
+            );
+            response.mainContent =
+              `SharePoint Document: ${response.title}\n\n` +
+              `Unable to extract content. The document may be protected or in a format that requires special handling.\n` +
+              `Document info: ${JSON.stringify(
+                response.metadata.documentInfo,
+                null,
+                2
+              )}`;
+          }
+        }
 
         return {
           success: true,
@@ -171,31 +201,25 @@ export class ContextManager {
           url: tab.url || response.url,
           selectedText: response.selectedText || "",
           mainContent: response.mainContent || "",
-          metadata: {
-            isGoogleDocs: response.pageType === "googleDocs",
-            extractionMethod: response.extractionMethod,
-            pageType: response.pageType,
-          },
+          metadata: response.metadata || {},
         };
       } else {
-        throw new Error(response?.error || "Universal extraction failed");
+        throw new Error(response?.error || "Extraction failed");
       }
     } catch (error) {
       console.error("[ContextManager] Failed to extract context:", error);
 
-      // Fallback
       const [tab] = await chrome.tabs.query({
         active: true,
         currentWindow: true,
       });
+
       return {
         success: true,
         title: tab?.title || "Unknown Page",
         url: tab?.url || "",
         selectedText: "",
-        mainContent: `Unable to extract content from this page. You can still ask questions about: ${
-          tab?.title || "this page"
-        }`,
+        mainContent: `Unable to extract content: ${error.message}`,
         metadata: { extractionMethod: "fallback" },
       };
     }
@@ -283,39 +307,60 @@ export class ContextManager {
 
     // Clean and process the text content
     let textContent = "";
-    if (rawContext.mainContent) {
+    if (rawContext?.mainContent) {
       textContent = this.cleanText(rawContext.mainContent);
-
-      // Truncate if too long (from context-analyzer logic)
-      //textContent = this.truncateContent(textContent, 5000);
+      // If you still want truncation, re-enable:
+      // textContent = this.truncateContent(textContent, 5000);
     }
 
-    // Get selected text if available
+    // Selected text
     let selectedText = "";
-    if (rawContext.selectedText) {
+    if (rawContext?.selectedText) {
       selectedText = this.cleanText(rawContext.selectedText);
     }
 
-    // Calculate word count
-    const wordCount = textContent
-      .split(/\s+/)
-      .filter((word) => word.length > 0).length;
+    // Word count (defensive against empty/whitespace)
+    const wordCount =
+      textContent.trim().length > 0
+        ? textContent.split(/\s+/).filter((w) => w.length > 0).length
+        : 0;
 
-    // Extract domain (from context-analyzer)
-    const domain = this.extractDomain(rawContext.url);
+    // Domain
+    const domain = this.extractDomain(rawContext?.url);
+
+    // Flags (prefer explicit metadata, then pageType, then URL)
+    const url = rawContext?.url || "";
+    const pageType = rawContext?.pageType || "";
+
+    const isGoogleDocs =
+      !!rawContext?.metadata?.isGoogleDocs ||
+      pageType === "googleDocs" ||
+      /(^|\.)docs\.google\.com\/document/.test(url);
+
+    const isGmail =
+      !!rawContext?.metadata?.isGmail ||
+      pageType === "gmail" ||
+      /(^|\.)mail\.google\.com/.test(url);
+
+    // extractionMethod may be top-level or inside metadata
+    const extractionMethod =
+      rawContext?.extractionMethod ||
+      rawContext?.metadata?.extractionMethod ||
+      "unknown";
 
     const processedContext = {
-      title: rawContext.title || "Untitled Page",
-      url: rawContext.url || "",
+      title: rawContext?.title || "Untitled Page",
+      url,
       domain,
       selectedText,
       mainContent: textContent,
       wordCount,
       timestamp: Date.now(),
-      isGoogleDocs: rawContext.metadata?.isGoogleDocs || false,
-      extractionMethod: rawContext.metadata?.extractionMethod || "unknown",
+      isGoogleDocs,
+      isGmail, // NEW
+      extractionMethod,
 
-      // Add summary info (from context-analyzer)
+      // Summary
       summary: this.generateContentSummary(textContent),
     };
 
@@ -325,6 +370,7 @@ export class ContextManager {
       wordCount: processedContext.wordCount,
       hasSelectedText: !!processedContext.selectedText,
       isGoogleDocs: processedContext.isGoogleDocs,
+      isGmail: processedContext.isGmail,
       method: processedContext.extractionMethod,
       contentLength: processedContext.mainContent.length,
     });
@@ -446,7 +492,7 @@ export class ContextManager {
   showContextBar(context) {
     if (!this.contextBar || !this.contextText) return;
 
-    // Create context info text
+    // Base text
     let contextInfo = `${context.title}`;
 
     if (context.wordCount > 0) {
@@ -457,16 +503,18 @@ export class ContextManager {
       contextInfo += ` • Google Docs`;
     }
 
-    // Update context text
-    this.contextText.textContent = contextInfo;
-
-    // Show context bar
-    this.contextBar.style.display = "flex";
-
-    // Show clear button
-    if (this.clearButton) {
-      this.clearButton.style.display = "flex";
+    if (context.isGmail) {
+      contextInfo += ` • Gmail`;
     }
+
+    // Example: show extraction method (optional)
+    if (context.extractionMethod && context.extractionMethod !== "unknown") {
+      contextInfo += ` • ${context.extractionMethod}`;
+    }
+
+    // Set the text and reveal the bar (keep your existing UI behavior)
+    this.contextText.textContent = contextInfo;
+    this.contextBar.style.display = "block";
   }
 
   clearContext() {

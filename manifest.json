@@ -16,6 +16,10 @@
   "host_permissions": [
     "https://*.506.ai/*",
     "https://docs.google.com/*",
+    "https://mail.google.com/*",
+    "https://*.sharepoint.com/*",
+    "https://*.office.com/*",
+    "https://*.office365.com/*",
     "<all_urls>"
   ],
 
@@ -29,7 +33,12 @@
 
   "content_scripts": [
     {
-      "matches": ["*://docs.google.com/*", "https://*.506.ai/*", "<all_urls>"],
+      "matches": [
+        "*://docs.google.com/*",
+        "https://*.506.ai/*",
+        "*://mail.google.com/*",
+        "<all_urls>"
+      ],
       "js": ["content/content-script.js"],
       "run_at": "document_idle"
     }
