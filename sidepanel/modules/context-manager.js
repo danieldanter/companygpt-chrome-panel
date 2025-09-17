@@ -15,6 +15,19 @@ export class ContextManager {
     this.contextText = null;
     this.clearButton = null;
 
+    chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+      if (
+        changeInfo.url &&
+        tab.active &&
+        tab.url?.includes("mail.google.com")
+      ) {
+        const oldUrl = this.currentContext?.url;
+        if (oldUrl && oldUrl !== changeInfo.url) {
+          console.log("[ContextManager] Gmail URL changed, reloading context");
+          this.loadPageContext();
+        }
+      }
+    });
     // Initialize everything
     this.init();
   }
@@ -92,8 +105,11 @@ export class ContextManager {
   }
 
   async loadPageContext() {
-    if (!this.loadButton) return;
-
+    // Always clear old context first
+    if (this.hasContext()) {
+      console.log("[ContextManager] Clearing old context before loading new");
+      this.clearContext();
+    }
     console.log("[ContextManager] Loading page context...");
 
     // Set loading state
