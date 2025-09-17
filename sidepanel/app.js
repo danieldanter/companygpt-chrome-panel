@@ -139,24 +139,6 @@ class CompanyGPTChat {
       this.handleBackgroundMessage(message);
     });
 
-    // Listen for tab activation (user switches tabs)
-    chrome.tabs.onActivated.addListener(async (activeInfo) => {
-      // Small delay to let the tab fully load
-      setTimeout(() => {
-        this.handleTabChange(activeInfo.tabId);
-      }, 100);
-    });
-
-    // Also listen for URL changes in the same tab
-    chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-      if (changeInfo.url && tab.active) {
-        console.log("[App] URL changed in active tab:", changeInfo.url);
-        setTimeout(() => {
-          this.handleTabChange(tabId);
-        }, 100);
-      }
-    });
-
     // Login overlay listeners
     this.elements.btnLogin?.addEventListener("click", () => this.handleLogin());
     this.elements.btnCheckAuth?.addEventListener("click", () =>
@@ -170,36 +152,58 @@ class CompanyGPTChat {
       }
     });
 
-    // Better tab change detection
-    let lastActiveTabUrl = null;
+    // --- Single debounced tab change handler ---
+    let tabChangeTimeout = null;
+    let lastProcessedUrl = null;
 
-    // Check for tab changes every time user focuses the side panel
+    const handleTabChangeDebounced = async (tabId, url) => {
+      clearTimeout(tabChangeTimeout);
+
+      tabChangeTimeout = setTimeout(async () => {
+        if (url === lastProcessedUrl) {
+          console.log("[App] Skipping duplicate tab change for:", url);
+          return;
+        }
+
+        lastProcessedUrl = url;
+        console.log("[App] Processing tab change:", url);
+
+        if (this.contextManager) {
+          if (!url.startsWith("chrome://") && !url.startsWith("about:")) {
+            await this.contextManager.loadPageContext();
+          }
+        }
+      }, 300); // 300ms debounce
+    };
+
+    // Listen for tab activation
+    chrome.tabs.onActivated.addListener(async (activeInfo) => {
+      const [tab] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      if (tab) {
+        handleTabChangeDebounced(tab.id, tab.url);
+      }
+    });
+
+    // Listen for URL changes
+    chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+      if (changeInfo.url && tab.active) {
+        handleTabChangeDebounced(tabId, changeInfo.url);
+      }
+    });
+
+    // Listen for visibility changes
     document.addEventListener("visibilitychange", async () => {
       if (!document.hidden && this.isInitialized) {
         const [tab] = await chrome.tabs.query({
           active: true,
           currentWindow: true,
         });
-        if (tab && tab.url !== lastActiveTabUrl) {
-          lastActiveTabUrl = tab.url;
-          await this.handleTabChange(tab.id);
+        if (tab) {
+          handleTabChangeDebounced(tab.id, tab.url);
         }
-      }
-    });
-
-    // Also listen for tab activation (debounced)
-    chrome.tabs.onActivated.addListener(async (activeInfo) => {
-      if (this.isInitialized) {
-        setTimeout(async () => {
-          const [tab] = await chrome.tabs.query({
-            active: true,
-            currentWindow: true,
-          });
-          if (tab && tab.url !== lastActiveTabUrl) {
-            lastActiveTabUrl = tab.url;
-            await this.handleTabChange(activeInfo.tabId);
-          }
-        }, 100);
       }
     });
   }

@@ -35,12 +35,22 @@
     {
       "matches": [
         "*://docs.google.com/*",
-        "https://*.506.ai/*",
         "*://mail.google.com/*",
-        "<all_urls>"
+        "*://*.sharepoint.com/*",
+        "*://*.office.com/*",
+        "*://*.office365.com/*",
+        "*://*.506.ai/*"
       ],
       "js": ["content/content-script.js"],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+
+  "web_accessible_resources": [
+    {
+      "resources": ["extractors/*.js"],
+      "matches": ["<all_urls>"]
     }
   ],
 

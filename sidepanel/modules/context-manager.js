@@ -1,6 +1,4 @@
 // sidepanel/modules/context-manager.js
-// Unified Context Management Module
-
 export class ContextManager {
   constructor(app) {
     this.app = app;
@@ -8,12 +6,16 @@ export class ContextManager {
     this.isLoaded = false;
     this.lastUrl = null;
 
+    // Track extraction method
+    this.extractionMethod = null;
+
     // UI elements
     this.loadButton = null;
     this.contextBar = null;
     this.contextText = null;
     this.clearButton = null;
 
+    // Initialize everything
     this.init();
   }
 
@@ -31,6 +33,8 @@ export class ContextManager {
 
     // Monitor page changes
     this.monitorPageChanges();
+
+    console.log("[ContextManager] Initialization complete");
   }
 
   setupEventListeners() {
@@ -96,7 +100,7 @@ export class ContextManager {
     this.setButtonState("loading");
 
     try {
-      // Get page context using the app's method
+      // Get page context
       const context = await this.extractPageContext();
 
       if (
@@ -107,7 +111,7 @@ export class ContextManager {
         throw new Error(context?.error || "No context available");
       }
 
-      // Process the context (includes content from context-analyzer)
+      // Process the context
       const processedContext = this.processContext(context);
 
       // Store context
@@ -133,9 +137,6 @@ export class ContextManager {
     }
   }
 
-  /**
-   * Extract context from current page using universal injection
-   */
   async extractPageContext() {
     try {
       const [tab] = await chrome.tabs.query({
@@ -149,63 +150,47 @@ export class ContextManager {
 
       console.log("[ContextManager] Extracting from:", tab.url);
 
-      // First, try universal extraction
-      const response = await chrome.runtime.sendMessage({
-        type: "INJECT_UNIVERSAL_EXTRACTOR",
-        data: { tabId: tab.id },
-      });
+      const strategy = await this.determineExtractionStrategy(tab);
+      console.log("[ContextManager] Using strategy:", strategy);
 
-      if (response && response.success) {
-        // Check if it's SharePoint and needs API extraction
-        if (
-          response.metadata?.isSharePoint &&
-          response.metadata?.needsApiExtraction
-        ) {
-          console.log(
-            "[ContextManager] SharePoint document detected, extracting via API..."
-          );
+      let response;
 
-          this.setButtonState("loading");
+      switch (strategy) {
+        case "content-script":
+          response = await this.extractViaContentScript(tab.id);
+          break;
 
-          // Extract the actual document content via API
-          const docResponse = await chrome.runtime.sendMessage({
-            type: "EXTRACT_SHAREPOINT_DOCUMENT",
-            data: response.metadata.extractionParams,
-          });
+        case "injection":
+          response = await this.extractViaInjection(tab.id);
+          break;
 
-          if (docResponse && docResponse.success) {
-            console.log(
-              "[ContextManager] SharePoint content extracted successfully!"
-            );
-            response.mainContent = docResponse.content;
-            response.metadata.extractedVia = docResponse.method || "api";
-          } else {
-            console.log(
-              "[ContextManager] SharePoint extraction failed:",
-              docResponse?.error
-            );
-            response.mainContent =
-              `SharePoint Document: ${response.title}\n\n` +
-              `Unable to extract content. The document may be protected or in a format that requires special handling.\n` +
-              `Document info: ${JSON.stringify(
-                response.metadata.documentInfo,
-                null,
-                2
-              )}`;
-          }
-        }
+        case "restricted":
+          return {
+            success: false,
+            title: tab.title || "Restricted Page",
+            url: tab.url,
+            selectedText: "",
+            mainContent: "",
+            metadata: {
+              extractionMethod: "restricted",
+              message: "Content cannot be extracted from browser pages",
+            },
+          };
 
-        return {
-          success: true,
-          title: tab.title || response.title,
-          url: tab.url || response.url,
-          selectedText: response.selectedText || "",
-          mainContent: response.mainContent || "",
-          metadata: response.metadata || {},
-        };
-      } else {
-        throw new Error(response?.error || "Extraction failed");
+        default:
+          throw new Error("Unable to extract content from this page");
       }
+
+      // CHECK FOR ENHANCEMENTS NEEDED
+      if (
+        response?.metadata?.needsApiExtraction ||
+        response?.metadata?.needsExport
+      ) {
+        console.log("[ContextManager] Content needs API enhancement");
+        response = await this.enhanceWithApiData(response);
+      }
+
+      return response;
     } catch (error) {
       console.error("[ContextManager] Failed to extract context:", error);
 
@@ -215,93 +200,208 @@ export class ContextManager {
       });
 
       return {
-        success: true,
+        success: false,
         title: tab?.title || "Unknown Page",
         url: tab?.url || "",
         selectedText: "",
         mainContent: `Unable to extract content: ${error.message}`,
-        metadata: { extractionMethod: "fallback" },
+        metadata: {
+          extractionMethod: "failed",
+          error: error.message,
+        },
       };
     }
   }
 
-  /**
-   * Extract Google Docs content using injection method
-   */
-  async extractGoogleDocsContent(tabId, title, url) {
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: "INJECT_GOOGLE_DOCS_EXTRACTOR",
-        data: { tabId },
-      });
+  async determineExtractionStrategy(tab) {
+    const url = new URL(tab.url);
 
-      if (response && response.success) {
+    // Check if it's a restricted page
+    if (
+      url.protocol === "chrome:" ||
+      url.protocol === "chrome-extension:" ||
+      url.protocol === "about:"
+    ) {
+      return "none";
+    }
+
+    // List of sites with automatic content script injection
+    const autoInjectedHosts = [
+      "docs.google.com",
+      "mail.google.com",
+      "sharepoint.com",
+      "office.com",
+      "506.ai",
+    ];
+
+    // Check if content script should be loaded
+    const hasAutoInjection = autoInjectedHosts.some((host) =>
+      url.hostname.includes(host)
+    );
+
+    if (hasAutoInjection) {
+      // Verify content script is actually loaded
+      try {
+        const response = await chrome.tabs.sendMessage(tab.id, {
+          action: "ping",
+        });
+
+        if (response && response.status === "ready") {
+          return "content-script";
+        }
+      } catch (e) {
         console.log(
-          `[ContextManager] Google Docs extraction: ${response.length} characters`
+          "[ContextManager] Content script not responding, will inject"
         );
-        return {
-          success: true,
-          title,
-          url,
-          selectedText: "",
-          mainContent: response.content,
-          metadata: {
-            isGoogleDocs: true,
-            extractionMethod: "injection",
-          },
-        };
-      } else {
-        throw new Error(response?.error || "Google Docs extraction failed");
       }
-    } catch (error) {
-      console.error("[ContextManager] Google Docs extraction failed:", error);
-      throw error;
     }
+
+    // For other sites or if content script isn't loaded
+    return "injection";
   }
 
-  /**
-   * Extract regular page content using content script
-   */
-  async extractRegularPageContent(tabId, title, url) {
+  async extractViaContentScript(tabId) {
+    console.log("[ContextManager] Extracting via content script");
+
+    const response = await chrome.tabs.sendMessage(tabId, {
+      action: "EXTRACT_CONTENT",
+      options: {
+        includeSelected: true,
+        maxLength: 10000,
+      },
+    });
+
+    if (!response.success) {
+      throw new Error(response.error || "Content extraction failed");
+    }
+
+    return {
+      success: true,
+      title: response.title,
+      url: response.url,
+      selectedText: response.selectedText || "",
+      mainContent: response.content,
+      metadata: response.metadata || {},
+    };
+  }
+
+  async extractViaInjection(tabId) {
+    console.log("[ContextManager] Extracting via injection");
+
+    // First, try to inject our content script
     try {
-      const response = await chrome.runtime.sendMessage({
-        type: "GET_PAGE_CONTEXT",
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ["content/content-script.js"],
       });
 
-      if (response && response.success !== false) {
-        console.log("[ContextManager] Regular page extraction successful");
-        return {
-          success: true,
-          title: title || response.title,
-          url: url || response.url,
-          selectedText: response.selectedText || "",
-          mainContent: response.mainContent || "",
-          metadata: {
-            isGoogleDocs: false,
-            extractionMethod: "contentScript",
-          },
-        };
-      } else {
-        throw new Error(response?.error || "Content script extraction failed");
-      }
-    } catch (error) {
-      console.error("[ContextManager] Regular page extraction failed:", error);
-      // Return basic context as fallback
-      return {
-        success: true,
-        title,
-        url,
-        selectedText: "",
-        mainContent: "",
-        metadata: { extractionMethod: "fallback" },
-      };
+      // Wait for initialization
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Now try content script method
+      return await this.extractViaContentScript(tabId);
+    } catch (injectionError) {
+      console.error(
+        "[ContextManager] Script injection failed:",
+        injectionError
+      );
+
+      // Fallback to one-time injection
+      const results = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => {
+          // Minimal extraction for fallback
+          return {
+            success: true,
+            title: document.title,
+            url: window.location.href,
+            selectedText: window.getSelection().toString(),
+            mainContent: document.body.innerText.substring(0, 5000),
+            metadata: {
+              method: "emergency-injection",
+            },
+          };
+        },
+      });
+
+      return results[0].result;
     }
   }
 
-  /**
-   * Process and clean extracted context
-   * (Combines logic from context-analyzer.js)
-   */
+  async extractViaHybrid(tabId) {
+    console.log("[ContextManager] Extracting via hybrid approach");
+
+    // Get initial content from content script
+    const contentResponse = await this.extractViaContentScript(tabId);
+
+    // Enhance with API data if needed
+    if (contentResponse.metadata?.needsExport) {
+      return await this.enhanceWithApiData(contentResponse);
+    }
+
+    return contentResponse;
+  }
+
+  async extractViaInjection(tabId) {
+    console.log("[ContextManager] Extracting via injection");
+
+    // First check if content script is already there
+    try {
+      const pingResponse = await chrome.tabs.sendMessage(tabId, {
+        action: "ping",
+      });
+      if (pingResponse && pingResponse.status === "ready") {
+        console.log(
+          "[ContextManager] Content script already present, using it"
+        );
+        return await this.extractViaContentScript(tabId);
+      }
+    } catch (e) {
+      // Not loaded, proceed with injection
+    }
+
+    // Try to inject our content script
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ["content/content-script.js"],
+      });
+
+      console.log("[ContextManager] Content script injected");
+
+      // Wait for initialization
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Now try content script method
+      return await this.extractViaContentScript(tabId);
+    } catch (injectionError) {
+      console.error(
+        "[ContextManager] Script injection failed:",
+        injectionError
+      );
+
+      // Fallback to one-time injection
+      const results = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => {
+          // Minimal extraction for fallback
+          return {
+            success: true,
+            title: document.title,
+            url: window.location.href,
+            selectedText: window.getSelection().toString(),
+            mainContent: document.body.innerText.substring(0, 5000),
+            metadata: {
+              method: "emergency-injection",
+            },
+          };
+        },
+      });
+
+      return results[0].result;
+    }
+  }
+
   processContext(rawContext) {
     console.log("[ContextManager] Processing context:", rawContext);
 
@@ -309,8 +409,6 @@ export class ContextManager {
     let textContent = "";
     if (rawContext?.mainContent) {
       textContent = this.cleanText(rawContext.mainContent);
-      // If you still want truncation, re-enable:
-      // textContent = this.truncateContent(textContent, 5000);
     }
 
     // Selected text
@@ -319,7 +417,7 @@ export class ContextManager {
       selectedText = this.cleanText(rawContext.selectedText);
     }
 
-    // Word count (defensive against empty/whitespace)
+    // Word count
     const wordCount =
       textContent.trim().length > 0
         ? textContent.split(/\s+/).filter((w) => w.length > 0).length
@@ -328,7 +426,7 @@ export class ContextManager {
     // Domain
     const domain = this.extractDomain(rawContext?.url);
 
-    // Flags (prefer explicit metadata, then pageType, then URL)
+    // Flags
     const url = rawContext?.url || "";
     const pageType = rawContext?.pageType || "";
 
@@ -342,7 +440,6 @@ export class ContextManager {
       pageType === "gmail" ||
       /(^|\.)mail\.google\.com/.test(url);
 
-    // extractionMethod may be top-level or inside metadata
     const extractionMethod =
       rawContext?.extractionMethod ||
       rawContext?.metadata?.extractionMethod ||
@@ -357,10 +454,9 @@ export class ContextManager {
       wordCount,
       timestamp: Date.now(),
       isGoogleDocs,
-      isGmail, // NEW
+      isGmail,
       extractionMethod,
-
-      // Summary
+      metadata: rawContext?.metadata || {},
       summary: this.generateContentSummary(textContent),
     };
 
@@ -378,41 +474,99 @@ export class ContextManager {
     return processedContext;
   }
 
-  /**
-   * Clean text content (improved from original)
-   */
+  // context-manager.js - Add this function after extractViaInjection
+
+  async enhanceWithApiData(response) {
+    console.log("[ContextManager] Enhancing with API data");
+    console.log("[ContextManager] Metadata:", response.metadata);
+
+    // Handle SharePoint documents
+    if (
+      response.metadata?.needsApiExtraction &&
+      response.metadata?.isDocument
+    ) {
+      try {
+        console.log("[ContextManager] Calling SharePoint extraction API");
+
+        const docResponse = await chrome.runtime.sendMessage({
+          type: "EXTRACT_SHAREPOINT_DOCUMENT",
+          data: {
+            sourceDoc: response.metadata.sourceDoc,
+            fileName: response.metadata.fileName,
+            fileUrl: response.metadata.documentUrl || response.url,
+            siteUrl: response.url,
+          },
+        });
+
+        console.log("[ContextManager] SharePoint API response:", docResponse);
+
+        if (docResponse && docResponse.success) {
+          response.mainContent = docResponse.content;
+          response.metadata.enhanced = true;
+          response.metadata.method = docResponse.method || "sharepoint-api";
+        } else {
+          console.error(
+            "[ContextManager] SharePoint extraction failed:",
+            docResponse?.error
+          );
+          response.mainContent = `SharePoint Document: ${
+            response.metadata.fileName
+          }\n\nCould not extract content. Error: ${
+            docResponse?.error || "Unknown error"
+          }`;
+        }
+      } catch (error) {
+        console.error(
+          "[ContextManager] Failed to extract SharePoint doc:",
+          error
+        );
+        response.mainContent = `SharePoint Document: ${response.metadata.fileName}\n\nExtraction error: ${error.message}`;
+      }
+    }
+
+    // Handle Google Docs export
+    if (response.metadata?.docId && response.metadata?.needsExport) {
+      try {
+        console.log("[ContextManager] Calling Google Docs export API");
+
+        const exportResponse = await chrome.runtime.sendMessage({
+          type: "EXTRACT_GOOGLE_DOCS",
+          data: { docId: response.metadata.docId },
+        });
+
+        console.log(
+          "[ContextManager] Google Docs export response:",
+          exportResponse
+        );
+
+        if (exportResponse && exportResponse.success) {
+          response.mainContent = exportResponse.content;
+          response.metadata.enhanced = true;
+          response.metadata.method = "google-docs-export";
+        } else {
+          console.error(
+            "[ContextManager] Google Docs export failed:",
+            exportResponse?.error
+          );
+        }
+      } catch (error) {
+        console.error("[ContextManager] Failed to export Google Doc:", error);
+      }
+    }
+
+    return response;
+  }
+
   cleanText(text) {
     if (!text) return "";
 
     return text
-      .replace(/\s+/g, " ") // Multiple spaces to single space
-      .replace(/\n\s*\n/g, "\n") // Multiple newlines to single
-      .replace(/^\s+|\s+$/g, "") // Trim start and end
+      .replace(/\s+/g, " ")
+      .replace(/\n\s*\n/g, "\n")
+      .replace(/^\s+|\s+$/g, "")
       .trim();
   }
 
-  /**
-   * Truncate content while preserving word boundaries
-   * (From context-analyzer.js)
-   */
-  truncateContent(text, maxChars = 5000) {
-    if (!text || text.length <= maxChars) {
-      return text;
-    }
-
-    // Find last space before max chars
-    const truncated = text.substring(0, maxChars);
-    const lastSpace = truncated.lastIndexOf(" ");
-
-    return lastSpace > 0
-      ? truncated.substring(0, lastSpace) + "..."
-      : truncated + "...";
-  }
-
-  /**
-   * Extract domain from URL
-   * (From context-analyzer.js)
-   */
   extractDomain(url) {
     try {
       const urlObj = new URL(url);
@@ -422,20 +576,14 @@ export class ContextManager {
     }
   }
 
-  /**
-   * Generate content summary
-   * (From context-analyzer.js)
-   */
   generateContentSummary(content) {
     if (!content) return null;
 
-    // Basic text analysis
     const words = content.split(/\s+/).filter((w) => w.length > 0);
     const sentences = content
       .split(/[.!?]+/)
       .filter((s) => s.trim().length > 0);
 
-    // Extract potential headers (lines that are shorter and might be titles)
     const lines = content.split("\n").filter((l) => l.trim().length > 0);
     const potentialHeaders = lines
       .filter((line) => {
@@ -464,7 +612,6 @@ export class ContextManager {
     this.loadButton.classList.remove("loading", "loaded", "error");
     this.loadButton.setAttribute("data-state", state);
 
-    // Update button appearance based on state
     switch (state) {
       case "loading":
         this.loadButton.classList.add("loading");
@@ -483,7 +630,7 @@ export class ContextManager {
         this.loadButton.title = "Failed to load context - click to retry";
         break;
 
-      default: // 'default'
+      default:
         this.loadButton.disabled = false;
         this.loadButton.title = "Load page context";
     }
@@ -492,7 +639,6 @@ export class ContextManager {
   showContextBar(context) {
     if (!this.contextBar || !this.contextText) return;
 
-    // Base text
     let contextInfo = `${context.title}`;
 
     if (context.wordCount > 0) {
@@ -507,38 +653,36 @@ export class ContextManager {
       contextInfo += ` • Gmail`;
     }
 
-    // Example: show extraction method (optional)
-    if (context.extractionMethod && context.extractionMethod !== "unknown") {
-      contextInfo += ` • ${context.extractionMethod}`;
+    // Show extraction method for debugging (remove in production)
+    if (context.metadata?.method) {
+      contextInfo += ` • ${context.metadata.method}`;
     }
 
-    // Set the text and reveal the bar (keep your existing UI behavior)
     this.contextText.textContent = contextInfo;
     this.contextBar.style.display = "block";
+
+    if (this.clearButton) {
+      this.clearButton.style.display = "block";
+    }
   }
 
   clearContext() {
     console.log("[ContextManager] Clearing context");
 
-    // Clear stored context
     this.currentContext = null;
     this.isLoaded = false;
 
-    // Reset button state
     this.setButtonState("default");
 
-    // Hide context bar
     if (this.contextBar) {
       this.contextBar.style.display = "none";
     }
 
-    // Hide clear button
     if (this.clearButton) {
       this.clearButton.style.display = "none";
     }
   }
 
-  // Method to get context for including in messages
   getContextForMessage() {
     if (!this.isLoaded || !this.currentContext) {
       return null;
@@ -547,14 +691,10 @@ export class ContextManager {
     return this.currentContext;
   }
 
-  // Check if context is loaded
   hasContext() {
     return this.isLoaded && this.currentContext !== null;
   }
 
-  /**
-   * Get formatted context for display
-   */
   getContextDisplay() {
     if (!this.currentContext) {
       return "Kein Kontext verfügbar";
