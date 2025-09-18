@@ -217,63 +217,71 @@ export class ChatController {
       throw new Error("ChatController not initialized");
     }
 
-    if (this.isStreaming) {
-      throw new Error("Already processing a message");
-    }
-    // DETECT AND STORE INTENT
     this.lastUserIntent = this.detectIntent(text, context);
     this.log("Detected intent:", this.lastUserIntent);
 
-    this.log("Sending message:", text);
-    this.log("Context:", context);
-
-    // Generate session ID for new chat
     if (!this.sessionId) {
       this.sessionId = this.generateChatId();
-      this.log("Generated new chat ID:", this.sessionId);
     }
 
-    // Build message content with context (only for first message)
-    let messageContent = text;
-    // To this (temporary for testing):
-    if (context) {
-      // Always add context if available
-      // Add context to first message
-      const contextString = this.buildContextString(context);
-      if (contextString) {
-        messageContent = `${text}\n\n${contextString}`;
-        this.log("Enhanced message with context:", messageContent);
+    // ============ THE CRITICAL FIX ============
+    // ALWAYS combine context into the content field!
+    let finalContent = text;
+
+    if (context && (context.mainContent || context.selectedText)) {
+      const contextContent = context.selectedText || context.mainContent;
+
+      // Determine context type for better formatting
+      let contextLabel = "[Kontext]";
+      if (context.isGmail) {
+        contextLabel = "[Email-Kontext]";
+      } else if (context.isGoogleDocs) {
+        contextLabel = "[Dokument-Kontext]";
+      } else if (context.url?.includes("sharepoint")) {
+        contextLabel = "[SharePoint-Kontext]";
+      } else if (context.selectedText) {
+        contextLabel = "[Ausgewählter Text]";
+      } else {
+        contextLabel = "[Webseiten-Kontext]";
       }
+
+      // COMBINE EVERYTHING INTO ONE STRING
+      finalContent = `${contextLabel}\n${contextContent}\n\n[Benutzer-Anfrage]\n${text}`;
+
+      this.log("Combined content length:", finalContent.length);
     }
 
-    const intent = this.detectIntent(text, context);
-
-    // Store intent with message
+    // Create message with COMBINED content
     const userMessage = {
       role: "user",
-      content: text,
-      intent: intent, // 'email-reply', 'email-new', 'summarize', etc.
-      context: context,
+      content: finalContent, // ← THIS is what the AI actually processes!
+      references: [],
+      sources: []
     };
 
-    // Add to messages array
+    // For display/UI purposes, keep originals
+    userMessage._originalText = text; // Store original for UI display
+    userMessage._context = context;   // Store context for reference
+
     this.messages.push(userMessage);
 
     try {
       this.isStreaming = true;
 
-      // Get domain
-      const domain =
-        window.AuthService?.getActiveDomain() || window.CONFIG?.DOMAIN;
+      const domain = window.AuthService?.getActiveDomain();
       if (!domain) {
         throw new Error("No domain configured");
       }
 
-      // Build chat request payload
       const chatPayload = {
         id: this.sessionId,
         folderId: this.folderId,
-        messages: this.messages,
+        messages: this.messages.map(msg => ({
+          role: msg.role,
+          content: msg.content,       // This now includes context!
+          references: msg.references || [],
+          sources: msg.sources || []
+        })),
         model: this.model,
         name: "Neuer Chat",
         roleId: this.roleId,
@@ -284,7 +292,7 @@ export class ChatController {
         temperature: 0.2,
       };
 
-      this.log("Chat API payload:", chatPayload);
+      this.log("Sending to API with context included in content");
 
       // Make chat API request
       const chatUrl = `https://${domain}.506.ai/api/qr/chat`;
@@ -325,15 +333,14 @@ export class ChatController {
       return assistantMessage;
     } catch (error) {
       console.error("[ChatController] Send message failed:", error);
-
       // Remove the user message if request failed
       this.messages.pop();
-
       throw error;
     } finally {
       this.isStreaming = false;
     }
   }
+
 
   /**
    * Build context string from page context
