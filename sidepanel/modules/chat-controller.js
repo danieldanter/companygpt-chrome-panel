@@ -1,22 +1,15 @@
-// sidepanel/modules/chat-controller.js
+// sidepanel/modules/chat-controller.js - CLEANED VERSION
 
 export class ChatController {
   constructor() {
-    // ===== NEW: Use AppStore =====
+    // Use AppStore as single source of truth
     this.store = window.AppStore;
 
-    // OLD: Keep for compatibility
-    this.messages = [];
-    this.currentContext = null;
-    this.sessionId = null; // Will be generated on first message
+    // Controller state
     this.isInitialized = false;
-    this.isStreaming = false;
     this.abortController = null;
-    this.lastUserIntent = null; // track intent
 
-    // CompanyGPT specific data
-    this.folderId = null;
-    this.roleId = null;
+    // CompanyGPT model config
     this.model = {
       id: "gemini-2.5-flash",
       name: "Gemini 2.5 Flash",
@@ -27,7 +20,7 @@ export class ChatController {
     // Debug flag
     this.debug = true;
 
-    // ===== NEW: Setup state sync =====
+    // Setup state sync
     this.setupStateSync();
   }
 
@@ -40,43 +33,11 @@ export class ChatController {
     }
   }
 
-  // ===== ADD THIS NEW METHOD =====
   setupStateSync() {
     console.log("[ChatController] Setting up state sync...");
 
-    // Sync messages with store
-    this.store.subscribe("chat.messages", (messages) => {
-      this.messages = messages || []; // Keep old array in sync
-      console.log(
-        "[ChatController] Messages synced from store:",
-        this.messages.length
-      );
-    });
-
-    // Sync session ID
-    this.store.subscribe("chat.sessionId", (sessionId) => {
-      this.sessionId = sessionId;
-      console.log("[ChatController] Session ID synced:", sessionId);
-    });
-
-    // Sync streaming state
-    this.store.subscribe("chat.isStreaming", (isStreaming) => {
-      this.isStreaming = isStreaming;
-    });
-
-    // Sync folder/role IDs
-    this.store.subscribe("chat.folderId", (folderId) => {
-      this.folderId = folderId;
-    });
-
-    this.store.subscribe("chat.roleId", (roleId) => {
-      this.roleId = roleId;
-    });
-
-    // Sync last user intent
-    this.store.subscribe("chat.lastUserIntent", (intent) => {
-      this.lastUserIntent = intent;
-    });
+    // We don't need to manually sync anymore - just read from store when needed
+    // The store is our single source of truth
   }
 
   /**
@@ -89,7 +50,7 @@ export class ChatController {
       // Load folders and roles from CompanyGPT
       await this.loadFoldersAndRoles();
 
-      // ===== NEW: Load from store instead of chrome.storage =====
+      // Load stored messages if any
       const storedMessages = this.store.get("chat.messages") || [];
       const storedSessionId = this.store.get("chat.sessionId");
 
@@ -114,13 +75,11 @@ export class ChatController {
       this.setupMessageHandlers();
 
       this.isInitialized = true;
-
-      // ===== NEW: Update store =====
       this.store.set("chat.initialized", true);
 
       this.log("Initialized successfully", {
-        folderId: this.folderId,
-        roleId: this.roleId,
+        folderId: this.store.get("chat.folderId"),
+        roleId: this.store.get("chat.roleId"),
         messagesLoaded: this.store.get("chat.messages").length,
       });
 
@@ -137,13 +96,12 @@ export class ChatController {
   }
 
   /**
-   * Load folders and roles - Update to use store
+   * Load folders and roles
    */
   async loadFoldersAndRoles() {
     this.log("Loading folders and roles...");
 
     try {
-      // Get domain from store instead of AuthService
       const domain =
         this.store.get("auth.domain") || this.store.get("auth.activeDomain");
 
@@ -172,7 +130,6 @@ export class ChatController {
         throw new Error("No ROOT_CHAT folder found");
       }
 
-      // ===== NEW: Update store =====
       this.store.set("chat.folderId", rootChatFolder.id);
       this.log("Found ROOT_CHAT folder:", {
         id: rootChatFolder.id,
@@ -229,7 +186,6 @@ export class ChatController {
       credentials: "include",
     };
 
-    // Merge options (body etc. from options should override defaults)
     const finalOptions = { ...defaultOptions, ...options };
 
     this.log("Making authenticated request:", url, finalOptions);
@@ -255,7 +211,6 @@ export class ChatController {
     };
   }
 
-  // ===== UPDATE detectIntent to use store =====
   detectIntent(text, context) {
     // Get context from store if not provided
     if (!context) {
@@ -275,14 +230,12 @@ export class ChatController {
   }
 
   getLastUserIntent() {
-    // Get from store
-    return this.store.get("chat.lastUserIntent") || this.lastUserIntent;
+    return this.store.get("chat.lastUserIntent");
   }
 
   /**
-   * Send a message - Update to use store
+   * Send a message
    */
-  // Fixed sendMessage method for chat-controller.js
   async sendMessage(text, context = null) {
     console.log("[ChatController] === SENDING MESSAGE ===");
     console.log("[ChatController] Text:", text);
@@ -338,11 +291,11 @@ export class ChatController {
       _context: context,
     };
 
-    // === FIX: Get current messages and add new one ===
+    // Get current messages and add new one
     const currentMessages = this.store.get("chat.messages") || [];
     const messagesWithNewOne = [...currentMessages, userMessage];
 
-    // === FIX: Update store IMMEDIATELY ===
+    // Update store IMMEDIATELY
     this.store.set("chat.messages", messagesWithNewOne);
 
     console.log(
@@ -367,12 +320,11 @@ export class ChatController {
         throw new Error("No domain configured");
       }
 
-      // === FIX: Build payload with the messages we just saved ===
+      // Build payload with the messages we just saved
       const chatPayload = {
         id: this.store.get("chat.sessionId"),
         folderId: this.store.get("chat.folderId"),
         messages: messagesWithNewOne.map((msg) => ({
-          // Use messagesWithNewOne directly!
           role: msg.role,
           content: msg.content,
           references: msg.references || [],
@@ -436,7 +388,7 @@ export class ChatController {
         sources: [],
       };
 
-      // === FIX: Get fresh messages from store and add assistant response ===
+      // Get fresh messages from store and add assistant response
       const updatedMessages = [
         ...this.store.get("chat.messages"),
         assistantMessage,
@@ -454,8 +406,7 @@ export class ChatController {
       console.error("[ChatController] Send message failed:", error);
 
       // Revert the failed user message
-      const revertedMessages = currentMessages; // Back to original
-      this.store.set("chat.messages", revertedMessages);
+      this.store.set("chat.messages", currentMessages);
 
       this.store.actions.showError(
         "Failed to send message: " + (error?.message || String(error))
@@ -465,79 +416,9 @@ export class ChatController {
       this.store.set("chat.isStreaming", false);
     }
   }
-  /**
-   * Build context string from page context (kept for debugging/analysis)
-   */
-  buildContextString(context) {
-    console.log("[ChatController] === CONTEXT STRING BUILDING START ===");
-    console.log("[ChatController] Input context keys:", Object.keys(context));
-    console.log(
-      "[ChatController] Selected text length:",
-      context.selectedText?.length || 0
-    );
-    console.log(
-      "[ChatController] Main content length:",
-      context.mainContent?.length || 0
-    );
-    console.log("[ChatController] URL:", context.url);
-    console.log("[ChatController] Title:", context.title);
-
-    const parts = [];
-
-    if (context.selectedText) {
-      const selectedTextPart = `[Kontext: Ausgewählter Text auf der Seite: "${context.selectedText}"]`;
-      parts.push(selectedTextPart);
-      console.log(
-        "[ChatController] Added selected text context, length:",
-        selectedTextPart.length
-      );
-    } else if (context.url && context.title) {
-      const urlTitlePart = `[Kontext: Der Nutzer befindet sich auf ${context.url} mit dem Titel "${context.title}"]`;
-      parts.push(urlTitlePart);
-      console.log(
-        "[ChatController] Added URL/title context, length:",
-        urlTitlePart.length
-      );
-    }
-
-    if (context.mainContent && !context.selectedText) {
-      // NO TRUNCATION - include the full content
-      const fullContentPart = `[Seiteninhalt (Vollständig): ${context.mainContent}]`;
-      parts.push(fullContentPart);
-      console.log(
-        "[ChatController] Added FULL main content, length:",
-        fullContentPart.length
-      );
-      console.log(
-        "[ChatController] Full content preview (first 200 chars):",
-        context.mainContent.substring(0, 200)
-      );
-      console.log(
-        "[ChatController] Full content preview (last 200 chars):",
-        context.mainContent.substring(
-          Math.max(0, context.mainContent.length - 200)
-        )
-      );
-    }
-
-    const finalContextString = parts.join("\n");
-
-    console.log("[ChatController] === CONTEXT STRING BUILDING COMPLETE ===");
-    console.log("[ChatController] Total parts:", parts.length);
-    console.log(
-      "[ChatController] Final context string length:",
-      finalContextString.length
-    );
-    console.log(
-      "[ChatController] Final context preview (first 300 chars):",
-      finalContextString.substring(0, 300)
-    );
-
-    return finalContextString;
-  }
 
   /**
-   * Clear chat history - Update to use store
+   * Clear chat history
    */
   async clearChat() {
     this.log("Clearing chat via store");
@@ -546,17 +427,6 @@ export class ChatController {
     this.store.actions.clearChat();
 
     this.log("Chat cleared in store");
-  }
-
-  // Remove old storage methods - we're using the store now!
-  async loadHistory() {
-    // Deprecated - using store
-    return this.store.get("chat.messages") || [];
-  }
-
-  async saveHistory() {
-    // Deprecated - store handles persistence automatically
-    this.log("History auto-saved via store");
   }
 
   /**

@@ -1,15 +1,10 @@
-// sidepanel/modules/context-manager.js
+// sidepanel/modules/context-manager.js - CLEANED VERSION
 export class ContextManager {
   constructor(app) {
     this.app = app;
 
-    // ===== NEW: Use AppStore =====
+    // Use AppStore as single source of truth
     this.store = window.AppStore;
-
-    // OLD: Keep for compatibility during migration
-    this.currentContext = null;
-    this.isLoaded = false;
-    this.lastUrl = null;
 
     // Track extraction method
     this.extractionMethod = null;
@@ -20,16 +15,17 @@ export class ContextManager {
     this.contextText = null;
     this.clearButton = null;
 
-    // ===== NEW: Sync with store =====
+    // Setup state sync
     this.setupStateSync();
 
+    // Monitor Gmail URL changes
     chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       if (
         changeInfo.url &&
         tab.active &&
         tab.url?.includes("mail.google.com")
       ) {
-        const oldUrl = this.currentContext?.url;
+        const oldUrl = this.store.get("context.url");
         if (oldUrl && oldUrl !== changeInfo.url) {
           console.log("[ContextManager] Gmail URL changed, reloading context");
           this.loadPageContext();
@@ -41,30 +37,24 @@ export class ContextManager {
     this.init();
   }
 
-  // ===== ADD THIS NEW METHOD =====
   setupStateSync() {
     console.log("[ContextManager] Setting up state sync...");
 
     // Subscribe to context changes from store
     this.store.subscribe("context.isLoaded", (isLoaded) => {
-      this.isLoaded = isLoaded; // Keep old variable in sync
-
       if (isLoaded) {
         const context = this.store.get("context");
-        this.currentContext = context; // Sync old variable
         this.showContextBar(context);
       } else {
-        this.currentContext = null;
         this.hideContextBar();
       }
     });
 
     // Subscribe to tab changes
     this.store.subscribe("tab.url", (url) => {
-      if (url && url !== this.lastUrl) {
+      if (url && url !== this.store.get("context.url")) {
         console.log("[ContextManager] Tab URL changed via state:", url);
         this.onPageChange(url);
-        this.lastUrl = url;
       }
     });
   }
@@ -103,13 +93,12 @@ export class ContextManager {
     // Check for URL changes every 2 seconds
     setInterval(async () => {
       const currentUrl = await this.getCurrentUrl();
+      const lastUrl = this.store.get("context.url");
 
-      if (this.lastUrl && currentUrl !== this.lastUrl) {
+      if (lastUrl && currentUrl !== lastUrl) {
         console.log("[ContextManager] Page changed:", currentUrl);
         this.onPageChange(currentUrl);
       }
-
-      this.lastUrl = currentUrl;
     }, 2000);
   }
 
@@ -141,16 +130,14 @@ export class ContextManager {
     }, 3000);
   }
 
-  // ===== UPDATE loadPageContext METHOD =====
   async loadPageContext() {
     // Always clear old context first
     if (this.store.get("context.isLoaded")) {
       console.log("[ContextManager] Clearing old context before loading new");
       this.clearContext();
     }
-    console.log(
-      "[ContextManager] Loading page context with new state system..."
-    );
+
+    console.log("[ContextManager] Loading page context...");
 
     // Update UI state
     this.setButtonState("loading");
@@ -171,7 +158,7 @@ export class ContextManager {
       // Process the context
       const processedContext = this.processContext(context);
 
-      // ===== NEW: Update store instead of local variables =====
+      // Update store
       this.store.actions.setContext(processedContext);
 
       // Update UI
@@ -238,7 +225,7 @@ export class ContextManager {
           throw new Error("Unable to extract content from this page");
       }
 
-      // CHECK FOR ENHANCEMENTS NEEDED
+      // Check for enhancements needed
       if (
         response?.metadata?.needsApiExtraction ||
         response?.metadata?.needsExport
@@ -342,7 +329,6 @@ export class ContextManager {
     };
   }
 
-  // (Consolidated, final version)
   async extractViaInjection(tabId) {
     console.log("[ContextManager] Extracting via injection");
 
@@ -403,20 +389,6 @@ export class ContextManager {
     }
   }
 
-  async extractViaHybrid(tabId) {
-    console.log("[ContextManager] Extracting via hybrid approach");
-
-    // Get initial content from content script
-    const contentResponse = await this.extractViaContentScript(tabId);
-
-    // Enhance with API data if needed
-    if (contentResponse.metadata?.needsExport) {
-      return await this.enhanceWithApiData(contentResponse);
-    }
-
-    return contentResponse;
-  }
-
   processContext(rawContext) {
     console.log("[ContextManager] Processing context:", rawContext);
 
@@ -443,19 +415,18 @@ export class ContextManager {
 
     // Flags
     const url = rawContext?.url || "";
-    const pageType = rawContext?.pageType || "";
     const isGmail =
       !!rawContext?.metadata?.isGmail ||
       rawContext?.pageType === "gmail" ||
-      rawContext?.siteType === "gmail" || // Add this check
-      rawContext?.hostname?.includes("mail.google.com") || // Add this check
+      rawContext?.siteType === "gmail" ||
+      rawContext?.hostname?.includes("mail.google.com") ||
       rawContext?.url?.includes("mail.google.com");
 
     const isGoogleDocs =
       !!rawContext?.metadata?.isGoogleDocs ||
       rawContext?.pageType === "googleDocs" ||
-      rawContext?.siteType === "google-docs" || // Add this check
-      rawContext?.hostname?.includes("docs.google.com") || // Add this check
+      rawContext?.siteType === "google-docs" ||
+      rawContext?.hostname?.includes("docs.google.com") ||
       rawContext?.url?.includes("docs.google.com");
 
     const extractionMethod =
@@ -469,10 +440,11 @@ export class ContextManager {
       domain,
       selectedText,
       mainContent: textContent,
+      content: textContent, // Store as both for compatibility
       wordCount,
       timestamp: Date.now(),
       isGoogleDocs,
-      isGmail, // Make sure this is included
+      isGmail,
       extractionMethod,
       metadata: rawContext?.metadata || {},
       summary: this.generateContentSummary(textContent),
@@ -488,14 +460,10 @@ export class ContextManager {
       method: processedContext.extractionMethod,
       contentLength: processedContext.mainContent.length,
     });
-    console.log(
-      "[ContextManager] Context processed - isGmail:",
-      processedContext.isGmail
-    );
+
     return processedContext;
   }
 
-  // context-manager.js - Add this function after extractViaInjection
   async enhanceWithApiData(response) {
     console.log("[ContextManager] Enhancing with API data");
     console.log("[ContextManager] Metadata:", response.metadata);
@@ -656,7 +624,6 @@ export class ContextManager {
     }
   }
 
-  // ===== UPDATE showContextBar METHOD =====
   showContextBar(context) {
     if (!this.contextBar || !this.contextText) return;
 
@@ -704,7 +671,6 @@ export class ContextManager {
     }
   }
 
-  // ===== UPDATE hideContextBar =====
   hideContextBar() {
     if (this.contextBar) {
       this.contextBar.style.display = "none";
@@ -772,7 +738,6 @@ export class ContextManager {
     }
   }
 
-  // ===== UPDATE clearContext METHOD =====
   clearContext() {
     console.log("[ContextManager] Clearing context via store");
 
@@ -781,21 +746,15 @@ export class ContextManager {
 
     // Update UI
     this.setButtonState("default");
-
-    // These will be updated via subscription
-    // this.currentContext = null;  // No longer needed
-    // this.isLoaded = false;        // No longer needed
   }
 
-  // ===== UPDATE hasContext METHOD =====
   hasContext() {
-    // Use store's computed property
+    // Use store's computed property or direct check
     return (
       this.store.get("context.isLoaded") && this.store.get("context.content")
     );
   }
 
-  // ===== UPDATE getContextForMessage METHOD =====
   getContextForMessage() {
     if (!this.store.get("context.isLoaded")) {
       return null;
@@ -805,33 +764,34 @@ export class ContextManager {
 
     return {
       ...context,
-      mainContent: context.content, // <-- ADD JUST THIS LINE
+      mainContent: context.content, // Ensure compatibility
       sourceType: this.detectSourceType(),
       isActive: this.isSourceStillActive(),
     };
   }
 
-  // ADD these new methods after getContextForMessage():
   detectSourceType() {
-    if (this.currentContext?.isGmail) return "gmail";
-    if (this.currentContext?.isGoogleDocs) return "docs";
-    if (this.currentContext?.url?.includes("calendar.google.com"))
-      return "calendar";
+    const context = this.store.get("context");
+    if (context?.isGmail) return "gmail";
+    if (context?.isGoogleDocs) return "docs";
+    if (context?.url?.includes("calendar.google.com")) return "calendar";
     return "web";
   }
 
   async isSourceStillActive() {
     // Check if the tab we extracted from is still open
+    const contextUrl = this.store.get("context.url");
     const tabs = await chrome.tabs.query({});
-    return tabs.some((tab) => tab.url === this.currentContext?.url);
+    return tabs.some((tab) => tab.url === contextUrl);
   }
 
   getContextDisplay() {
-    if (!this.currentContext) {
+    const context = this.store.get("context");
+    if (!context || !context.isLoaded) {
       return "Kein Kontext verfügbar";
     }
 
-    const { title, domain } = this.currentContext;
+    const { title, domain } = context;
     return `📄 ${title || "Unbenannte Seite"} (${domain})`;
   }
 }

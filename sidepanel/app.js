@@ -1,59 +1,44 @@
-// sidepanel/app.js
+// sidepanel/app.js - CLEANED VERSION
 import { ChatController } from "./modules/chat-controller.js";
 import { MessageRenderer } from "./modules/message-renderer.js";
 import { ContextManager } from "./modules/context-manager.js";
 
 class CompanyGPTChat {
   constructor() {
-    // ===== NEW: Use AppStore =====
+    // Use AppStore as single source of truth
     this.store = window.AppStore;
 
+    // Core modules
     this.chatController = null;
     this.messageRenderer = null;
-    this.contextAnalyzer = null;
-    this.currentTabInfo = null;
-    this.isInitialized = false;
-
-    // OLD: Keep these for now (we'll remove later)
-    this.isAuthenticated = false;
-    this.authCheckInProgress = false;
-
-    // Session/context management (kept minimal)
-    this.lastKnownUrl = null;
-    this.lastKnownDomain = null;
-    this.sessionStartTime = null;
-
-    // ContextManager instance
     this.contextManager = null;
 
-    // Cache UI refs
+    // Cache UI element refs
     this.elements = {};
 
-    // ===== NEW: Setup state subscriptions =====
+    // Setup state subscriptions
     this.setupStateSubscriptions();
   }
 
-  // ===== NEW METHOD: State subscriptions =====
   setupStateSubscriptions() {
     console.log("[App] Setting up state subscriptions...");
 
-    // Sync auth state between old and new
+    // Auth state changes
     this.store.subscribe("auth.isAuthenticated", (isAuth) => {
       console.log("[App] Auth state changed:", isAuth);
-      this.isAuthenticated = isAuth; // Keep old variable in sync
 
       // Update UI
       this.updateAuthStatus(isAuth, this.store.get("auth.domain"));
 
       // Show/hide login overlay
-      if (!isAuth && !this.authCheckInProgress) {
+      if (!isAuth) {
         this.showLoginOverlay(this.store.get("auth.domain"));
-      } else if (isAuth) {
+      } else {
         this.hideLoginOverlay();
       }
     });
 
-    // Subscribe to UI errors
+    // UI errors
     this.store.subscribe("ui.errors", (errors) => {
       if (errors && errors.length > 0) {
         const latestError = errors[errors.length - 1];
@@ -61,13 +46,12 @@ class CompanyGPTChat {
       }
     });
 
-    // Subscribe to context changes
+    // Context changes
     this.store.subscribe("context.isLoaded", (isLoaded) => {
       console.log("[App] Context loaded state:", isLoaded);
-      // Your context manager will handle this
     });
 
-    // Subscribe to active view changes
+    // Active view changes
     this.store.subscribe("ui.activeView", (view) => {
       console.log("[App] View changed to:", view);
       this.showView(view);
@@ -79,7 +63,7 @@ class CompanyGPTChat {
     console.log("[App] Initializing CompanyGPT Chat...");
 
     try {
-      // Initialize modules (but not chat controller yet)
+      // Initialize modules
       this.messageRenderer = new MessageRenderer();
 
       // Setup UI elements FIRST
@@ -91,15 +75,16 @@ class CompanyGPTChat {
       // Initialize ContextManager AFTER UI setup
       this.contextManager = new ContextManager(this);
 
-      // Check authentication (this will show login overlay if needed)
-      this.isAuthenticated = await this.checkAuth();
+      // Check authentication
+      const isAuthenticated = await this.checkAuth();
+      this.store.set("auth.isAuthenticated", isAuthenticated);
 
       // Only initialize chat if authenticated
-      if (this.isAuthenticated) {
+      if (isAuthenticated) {
         await this.initializeChat();
       }
 
-      this.isInitialized = true;
+      this.store.set("ui.initialized", true);
       console.log("[App] Initialization complete");
     } catch (error) {
       console.error("[App] Initialization failed:", error);
@@ -107,7 +92,6 @@ class CompanyGPTChat {
     }
   }
 
-  // === UI SETUP ===
   setupUIElements() {
     this.elements = {
       // Views
@@ -139,7 +123,7 @@ class CompanyGPTChat {
       domainInput: document.getElementById("domain-input"),
     };
 
-    // Debug: log missing elements (only if they're actually missing)
+    // Debug: log missing elements
     const missing = Object.entries(this.elements)
       .filter(([_, el]) => !el)
       .map(([key]) => key);
@@ -202,7 +186,7 @@ class CompanyGPTChat {
       }
     });
 
-    // --- Single debounced tab change handler ---
+    // Tab change handler with debouncing
     let tabChangeTimeout = null;
     let lastProcessedUrl = null;
 
@@ -223,7 +207,7 @@ class CompanyGPTChat {
             await this.contextManager.loadPageContext();
           }
         }
-      }, 300); // 300ms debounce
+      }, 300);
     };
 
     // Listen for tab activation
@@ -246,7 +230,7 @@ class CompanyGPTChat {
 
     // Listen for visibility changes
     document.addEventListener("visibilitychange", async () => {
-      if (!document.hidden && this.isInitialized) {
+      if (!document.hidden && this.store.get("ui.initialized")) {
         const [tab] = await chrome.tabs.query({
           active: true,
           currentWindow: true,
@@ -257,6 +241,7 @@ class CompanyGPTChat {
       }
     });
 
+    // Context action buttons
     document.addEventListener("click", (e) => {
       if (e.target.closest(".context-action-btn")) {
         const button = e.target.closest(".context-action-btn");
@@ -266,7 +251,6 @@ class CompanyGPTChat {
     });
   }
 
-  // Confirm before clearing chat
   confirmClearChat() {
     if (
       confirm(
@@ -277,14 +261,11 @@ class CompanyGPTChat {
     }
   }
 
-  // Clear chat history
-  // In app.js
   async clearChatHistory() {
     console.log("[App] Clearing all chat data");
 
-    // Clear store
-    this.store.set("chat.messages", []);
-    this.store.set("chat.sessionId", null);
+    // Use store action
+    this.store.actions.clearChat();
 
     // Clear storage
     await chrome.storage.local.remove(["chatHistory", "chatSessionId"]);
@@ -320,7 +301,6 @@ class CompanyGPTChat {
     }
   }
 
-  // === LOGIN OVERLAY ===
   showLoginOverlay(detectedDomain = null) {
     console.log("[App] Showing login overlay, domain:", detectedDomain);
 
@@ -334,7 +314,7 @@ class CompanyGPTChat {
       this.elements.messagesContainer.classList.add("blurred");
     }
 
-    // Handle domain detection display - with null checks
+    // Handle domain detection display
     if (detectedDomain && this.elements.domainStatus) {
       this.elements.domainStatus.style.display = "block";
       this.elements.detectedDomain &&
@@ -348,7 +328,7 @@ class CompanyGPTChat {
         (this.elements.domainInputGroup.style.display = "block");
     }
 
-    // Reset buttons with null checks
+    // Reset buttons
     this.elements.btnLogin && (this.elements.btnLogin.style.display = "block");
     this.elements.btnCheckAuth &&
       (this.elements.btnCheckAuth.style.display = "none");
@@ -361,21 +341,18 @@ class CompanyGPTChat {
   hideLoginOverlay() {
     console.log("[App] Hiding login overlay");
 
-    // Hide overlay
     if (this.elements.loginOverlay) {
       this.elements.loginOverlay.style.display = "none";
     }
 
-    // Unblur messages
     if (this.elements.messagesContainer) {
       this.elements.messagesContainer.classList.remove("blurred");
     }
   }
 
   async handleLogin() {
-    console.log("[App] Opening login page with new state system");
+    console.log("[App] Opening login page");
 
-    // Set loading state
     this.store.set("ui.isLoading", true);
 
     try {
@@ -411,7 +388,6 @@ class CompanyGPTChat {
         }
         domain = subdomain.trim().toLowerCase();
 
-        // Save to store
         this.store.set("auth.domain", domain);
         await chrome.storage.local.set({ lastKnownDomain: domain });
       }
@@ -435,17 +411,16 @@ class CompanyGPTChat {
     }
   }
 
-  // === AUTH FLOW ===
   async recheckAuth() {
-    console.log("[App] Rechecking authentication...]");
+    console.log("[App] Rechecking authentication...");
 
-    // Prevent multiple simultaneous checks
-    if (this.authCheckInProgress) {
+    const isCheckInProgress = this.store.get("auth.checkInProgress");
+    if (isCheckInProgress) {
       console.log("[App] Auth check already in progress, skipping");
       return;
     }
 
-    this.authCheckInProgress = true;
+    this.store.set("auth.checkInProgress", true);
 
     // Show loading state
     if (this.elements.btnCheckAuth) {
@@ -459,15 +434,7 @@ class CompanyGPTChat {
         window.AuthService.clearCache();
       }
 
-      // Force clear the CONFIG cache to re-detect domain
-      if (window.CONFIG) {
-        console.log("[App] Reloading config to detect cookies...");
-        const script = document.createElement("script");
-        script.src = "../shared/config.js?" + Date.now(); // Force reload with cache buster
-        document.head.appendChild(script);
-      }
-
-      // Wait longer for cookies to be properly set
+      // Wait for cookies to be properly set
       console.log("[App] Waiting for cookies to be set...");
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
@@ -480,10 +447,9 @@ class CompanyGPTChat {
       console.log("[App] Auth check result:", isAuthenticated);
 
       if (isAuthenticated || cookieCheck) {
-        // Success! Hide overlay and initialize
         console.log("[App] Authentication successful!");
         this.hideLoginOverlay();
-        this.isAuthenticated = true;
+        this.store.set("auth.isAuthenticated", true);
 
         // Initialize chat
         await this.initializeChat();
@@ -497,13 +463,12 @@ class CompanyGPTChat {
           `;
         }
       } else {
-        // Still not authenticated - reset button
+        // Reset button
         if (this.elements.btnCheckAuth) {
           this.elements.btnCheckAuth.textContent = "Anmeldung prüfen";
           this.elements.btnCheckAuth.disabled = false;
         }
 
-        // Show helpful message
         this.showError(
           "Noch nicht angemeldet. Falls du dich gerade angemeldet hast, warte einen Moment und versuche es erneut."
         );
@@ -511,7 +476,6 @@ class CompanyGPTChat {
     } catch (error) {
       console.error("[App] Auth recheck failed:", error);
 
-      // Reset button state
       if (this.elements.btnCheckAuth) {
         this.elements.btnCheckAuth.textContent = "Anmeldung prüfen";
         this.elements.btnCheckAuth.disabled = false;
@@ -519,11 +483,10 @@ class CompanyGPTChat {
 
       this.showError("Fehler beim Prüfen der Anmeldung: " + error.message);
     } finally {
-      this.authCheckInProgress = false;
+      this.store.set("auth.checkInProgress", false);
     }
   }
 
-  // New: direct cookie check
   async checkCookieDirectly() {
     try {
       const cookies = await chrome.cookies.getAll({
@@ -534,7 +497,6 @@ class CompanyGPTChat {
       console.log("[App] Found cookies:", cookies.length);
 
       if (cookies && cookies.length > 0) {
-        // Check if any cookie is not expired
         const now = Date.now() / 1000;
         const validCookie = cookies.find((cookie) => {
           return !cookie.expirationDate || cookie.expirationDate > now;
@@ -543,12 +505,11 @@ class CompanyGPTChat {
         if (validCookie) {
           console.log("[App] Valid session cookie found!");
 
-          // Extract domain from cookie
           const domain = validCookie.domain
             .replace(/^\./, "")
             .replace(".506.ai", "");
 
-          // IMPORTANT: Update AuthService with the domain info
+          // Update AuthService with the domain info
           if (window.AuthService && window.AuthService._state) {
             window.AuthService._state.cache.activeDomain = domain;
             window.AuthService._state.cache.isAuthenticated = true;
@@ -556,7 +517,6 @@ class CompanyGPTChat {
             console.log("[App] Updated AuthService with domain:", domain);
           }
 
-          // Update auth status
           this.updateAuthStatus(true, domain);
 
           return true;
@@ -570,22 +530,18 @@ class CompanyGPTChat {
     }
   }
 
-  // Resilient auth check
-  // Resilient auth check
   async checkAuth() {
-    console.log("[App] Checking authentication with new state system...");
+    console.log("[App] Checking authentication...");
 
     try {
-      // Update state to show checking
       this.store.set("ui.isLoading", true);
 
-      // Use AuthService but sync with store
       const isAuth = await window.AuthService.checkAuth(true);
       const domain = window.AuthService.getActiveDomain();
 
       console.log("[App] Auth check result:", isAuth, "Domain:", domain);
 
-      // Update store with auth info - SINGLE SOURCE OF TRUTH
+      // Update store with auth info
       this.store.batch({
         "auth.isAuthenticated": isAuth,
         "auth.domain": domain,
@@ -598,16 +554,13 @@ class CompanyGPTChat {
     } catch (error) {
       console.error("[App] Auth check failed:", error);
 
-      // Update store on error
       this.store.batch({
         "auth.isAuthenticated": false,
         "auth.domain": null,
         "ui.showLoginOverlay": true,
       });
 
-      // Add error to state
       this.store.actions.showError("Auth check failed: " + error.message);
-
       return false;
     } finally {
       this.store.set("ui.isLoading", false);
@@ -615,15 +568,12 @@ class CompanyGPTChat {
   }
 
   updateAuthStatus(isAuthenticated, domain = null) {
-    this.isAuthenticated = isAuthenticated;
-
     if (this.elements.currentDomain && domain) {
       this.elements.currentDomain.textContent = domain + ".506.ai";
     } else if (this.elements.currentDomain) {
       this.elements.currentDomain.textContent = "Nicht verbunden";
     }
 
-    // Enable/disable chat based on auth
     if (this.elements.messageInput) {
       this.elements.messageInput.disabled = !isAuthenticated;
       this.elements.messageInput.placeholder = isAuthenticated
@@ -636,10 +586,6 @@ class CompanyGPTChat {
     }
   }
 
-  // === CHAT ===
-  // In app.js - Replace the existing sendMessage handling with this:
-
-  // This is the method called when user clicks send or presses enter
   async sendMessage() {
     const message = this.elements.messageInput?.value?.trim();
 
@@ -651,7 +597,6 @@ class CompanyGPTChat {
 
     console.log("[App] User sending message:", message);
 
-    // Process the message
     await this.processSendMessage(message);
   }
 
@@ -691,40 +636,6 @@ class CompanyGPTChat {
     }
   }
 
-  async processSendMessage(message) {
-    // Clear input and reset height
-    this.elements.messageInput.value = "";
-    this.elements.messageInput.style.height = "auto";
-
-    // Add user message to UI
-    this.addMessage(message, "user");
-
-    // Show enhanced thinking indicator
-    const thinkingId = this.showTypingIndicator();
-
-    try {
-      // Get context from context manager
-      let context = null;
-      if (this.contextManager && this.contextManager.hasContext()) {
-        context = this.contextManager.getContextForMessage();
-      }
-
-      // Send to CompanyGPT API via ChatController
-      const response = await this.chatController.sendMessage(message, context);
-
-      // Remove thinking indicator
-      this.removeTypingIndicator(thinkingId);
-
-      // Start streaming the response
-      const messageId = this.startStreamingMessage();
-      await this.streamText(messageId, response.content, 3); // Very fast: 3ms per character
-    } catch (error) {
-      console.error("[App] Failed to send message:", error);
-      this.removeTypingIndicator(thinkingId);
-      this.addMessage(`Fehler: ${error.message}`, "error");
-    }
-  }
-
   async initializeChat() {
     try {
       console.log("[App] Initializing chat controller...");
@@ -733,7 +644,6 @@ class CompanyGPTChat {
         this.chatController = new ChatController();
       }
 
-      // Initialize only if not already initialized
       if (!this.chatController.isInitialized) {
         const success = await this.chatController.initialize();
         if (!success) {
@@ -743,7 +653,6 @@ class CompanyGPTChat {
 
       console.log("[App] Chat controller ready");
 
-      // Show success message if this is first init
       if (
         this.elements.messagesContainer &&
         !this.elements.messagesContainer.querySelector(".welcome-shown")
@@ -764,35 +673,28 @@ class CompanyGPTChat {
     const messageEl = document.createElement("div");
     messageEl.className = `message ${role}`;
 
-    // Handle system messages with icon
     if (role === "system") {
       messageEl.innerHTML = `<span class="system-icon">ℹ️</span> ${content}`;
     } else if (role === "assistant") {
-      // Get last user intent
       const lastUserIntent = this.chatController?.getLastUserIntent
         ? this.chatController.getLastUserIntent()
         : null;
 
-      // Added debug logs
       console.log("[App] Last user intent:", lastUserIntent);
 
       if (lastUserIntent && lastUserIntent !== "general") {
         console.log("[App] Should show buttons for intent:", lastUserIntent);
 
-        // Process markdown first
         const processedContent = this.messageRenderer.renderMarkdown(content);
 
-        // Create container with action buttons
         const containerDiv = document.createElement("div");
         containerDiv.className = "message-with-actions";
 
-        // Add content
         const contentDiv = document.createElement("div");
         contentDiv.className = "message-content";
         contentDiv.innerHTML = processedContent;
         containerDiv.appendChild(contentDiv);
 
-        // Add action buttons
         const buttonsDiv = document.createElement("div");
         buttonsDiv.className = "action-buttons";
 
@@ -829,7 +731,6 @@ class CompanyGPTChat {
         containerDiv.appendChild(buttonsDiv);
         messageEl.appendChild(containerDiv);
       } else {
-        // Just use markdown renderer without actions
         messageEl.innerHTML = this.messageRenderer.renderMarkdown(content);
       }
     } else {
@@ -841,18 +742,13 @@ class CompanyGPTChat {
     this.scrollToBottom();
   }
 
-  // Add these handler methods to app.js
-  // app.js - Make sure handleGmailReply is correct
-
   async handleGmailReply(content) {
     console.log("[App] Handling Gmail reply");
 
-    // Parse email content
     const emailData = this.parseEmailContent(content);
     console.log("[App] Parsed email data:", emailData);
 
     try {
-      // Find Gmail tab
       const tabs = await chrome.tabs.query({});
       const gmailTab = tabs.find((tab) => tab.url?.includes("mail.google.com"));
 
@@ -860,18 +756,14 @@ class CompanyGPTChat {
         console.log("[App] Found Gmail tab:", gmailTab.id);
 
         try {
-          // Try the original method first (this always worked before)
           const response = await chrome.tabs.sendMessage(gmailTab.id, {
             action: "INSERT_EMAIL_REPLY",
             data: emailData,
           });
 
           console.log("[App] Insert response:", response);
-
-          // Focus Gmail tab
           await chrome.tabs.update(gmailTab.id, { active: true });
         } catch (messageError) {
-          // Content script not responding - inject it
           console.log("[App] Content script not responding, reinjecting...");
 
           await chrome.scripting.executeScript({
@@ -879,24 +771,19 @@ class CompanyGPTChat {
             files: ["content/content-script.js"],
           });
 
-          // Wait for script to initialize
           await new Promise((resolve) => setTimeout(resolve, 500));
 
-          // Try again
           const response = await chrome.tabs.sendMessage(gmailTab.id, {
             action: "INSERT_EMAIL_REPLY",
             data: emailData,
           });
 
           console.log("[App] Insert response (second try):", response);
-
-          // Focus Gmail tab
           await chrome.tabs.update(gmailTab.id, { active: true });
         }
       } else {
         console.log("[App] No Gmail tab found, opening new one");
 
-        // Open Gmail compose with content
         const composeUrl = `https://mail.google.com/mail/?view=cm&su=${encodeURIComponent(
           emailData.subject
         )}&body=${encodeURIComponent(emailData.body)}`;
@@ -904,8 +791,6 @@ class CompanyGPTChat {
       }
     } catch (error) {
       console.error("[App] Error inserting Gmail reply:", error);
-
-      // Fallback to clipboard
       navigator.clipboard.writeText(content);
       alert("Email copied to clipboard. Could not insert directly into Gmail.");
     }
@@ -921,21 +806,15 @@ class CompanyGPTChat {
     chrome.tabs.create({ url: composeUrl });
   }
 
-  // app.js - Update parseEmailContent to better handle formatting
-
   parseEmailContent(text) {
-    // First, clean up the response from the AI
     let cleanText = text;
 
-    // Remove quotes if wrapped
     if (cleanText.startsWith('"') && cleanText.endsWith('"')) {
       cleanText = cleanText.slice(1, -1);
     }
 
-    // Replace literal \n with actual newlines
     cleanText = cleanText.replace(/\\n/g, "\n");
 
-    // Parse subject and body
     const lines = cleanText.split("\n");
     let subject = "";
     let body = "";
@@ -950,7 +829,6 @@ class CompanyGPTChat {
       }
     }
 
-    // Clean up body - remove leading/trailing whitespace
     body = body.trim();
 
     return {
@@ -959,7 +837,6 @@ class CompanyGPTChat {
     };
   }
 
-  // Add streaming message support
   startStreamingMessage() {
     const messageId = `message-${Date.now()}`;
     const messageEl = document.createElement("div");
@@ -977,7 +854,6 @@ class CompanyGPTChat {
     const messageEl = document.getElementById(messageId);
     if (!messageEl) return;
 
-    // Preprocess content like we do in addMessage
     let processedContent = content;
 
     if (processedContent.startsWith('"') && processedContent.endsWith('"')) {
@@ -989,37 +865,30 @@ class CompanyGPTChat {
     processedContent = processedContent.replace(/\\n\\n/g, "\n\n");
     processedContent = processedContent.replace(/\\n/g, "\n");
 
-    // Render final markdown
     const finalHTML = this.messageRenderer
       ? this.messageRenderer.renderMarkdown(processedContent)
       : processedContent.replace(/\n/g, "<br>");
 
-    // Create temporary div to get plain text for streaming
     const tempDiv = document.createElement("div");
     tempDiv.innerHTML = finalHTML;
     const plainText = tempDiv.textContent || tempDiv.innerText || "";
 
-    // Stream character by character
     let currentText = "";
     for (let i = 0; i < plainText.length; i++) {
       currentText += plainText[i];
 
-      // Update with current text + cursor
       messageEl.innerHTML = `${currentText.replace(
         /\n/g,
         "<br>"
       )}<span class="streaming-cursor">▊</span>`;
       this.scrollToBottom();
 
-      // Wait before next character
       await new Promise((resolve) => setTimeout(resolve, speed));
     }
 
-    // Replace with final formatted HTML
     messageEl.className = "message assistant";
     messageEl.innerHTML = finalHTML;
 
-    // --- Add action buttons if needed (after streaming completes) ---
     const lastUserIntent = this.chatController?.getLastUserIntent
       ? this.chatController.getLastUserIntent()
       : null;
@@ -1027,14 +896,11 @@ class CompanyGPTChat {
     console.log("[App] Stream complete, intent:", lastUserIntent);
 
     if (lastUserIntent && lastUserIntent !== "general") {
-      // Avoid duplicating wrapper if already present
       const alreadyWrapped = messageEl.querySelector(".message-with-actions");
       if (!alreadyWrapped) {
-        // Prepare buttons
         const buttonsDiv = document.createElement("div");
         buttonsDiv.className = "action-buttons";
 
-        // Copy button
         const copyBtn = document.createElement("button");
         copyBtn.className = "action-btn copy-btn";
         copyBtn.innerHTML = "📋 Kopieren";
@@ -1056,7 +922,6 @@ class CompanyGPTChat {
         };
         buttonsDiv.appendChild(copyBtn);
 
-        // Intent-specific buttons
         if (lastUserIntent === "email-reply") {
           const replyBtn = document.createElement("button");
           replyBtn.className = "action-btn gmail-reply-btn";
@@ -1071,8 +936,7 @@ class CompanyGPTChat {
           buttonsDiv.appendChild(composeBtn);
         }
 
-        // Wrap existing content and add buttons
-        const currentContent = messageEl.innerHTML; // this is finalHTML
+        const currentContent = messageEl.innerHTML;
         messageEl.innerHTML = "";
 
         const containerDiv = document.createElement("div");
@@ -1124,38 +988,20 @@ class CompanyGPTChat {
     }
   }
 
-  startNewChat() {
-    if (
-      confirm("Neuen Chat starten? Die aktuelle Unterhaltung wird gelöscht.")
-    ) {
-      // Clear all messages
-      this.elements.messagesContainer.innerHTML = `
-        <div class="message assistant">
-          Neuer Chat gestartet. Ich kann dir bei Fragen zur aktuellen Seite helfen. ✨
-        </div>
-      `;
-      this.chatController?.clearChat();
-    }
-  }
-
-  // === BROWSER/TABS/MSG ===
   async handleTabChange(tabId) {
     console.log("[App] Tab changed:", tabId);
-    // Let ContextManager handle loading/clearing context
     this.contextManager?.loadPageContext();
   }
 
   handleBackgroundMessage(message) {
     switch (message.type) {
       case "TAB_INFO":
-        this.currentTabInfo = message.data;
+        this.store.set("tab.info", message.data);
         this.contextManager?.loadPageContext();
         break;
       case "AUTH_STATE_CHANGED":
         // Re-check auth when auth state changes
-        if (!this.authCheckInProgress) {
-          this.checkAuth();
-        }
+        this.checkAuth();
         break;
       default:
         console.log("[App] Unknown message type:", message.type);
@@ -1165,7 +1011,6 @@ class CompanyGPTChat {
   showError(message) {
     console.error("[App]", message);
 
-    // Only add to chat if container exists
     if (this.elements.messagesContainer) {
       const errorEl = document.createElement("div");
       errorEl.className = "message error";
@@ -1175,40 +1020,23 @@ class CompanyGPTChat {
     }
   }
 
-  // Add this method to CompanyGPTChat class
   async handleContextAction(action) {
-    console.log("[App] ========== CONTEXT ACTION DEBUG ==========");
-    console.log("[App] Action:", action);
+    console.log("[App] Context action:", action);
 
-    // Check context manager
-    console.log("[App] ContextManager exists:", !!this.contextManager);
-    console.log("[App] HasContext:", this.contextManager?.hasContext());
-
-    // Get context (single source of truth)
+    // Get context
     const context = this.contextManager?.getContextForMessage();
     console.log("[App] Context retrieved:", context);
-    console.log(
-      "[App] Context has content:",
-      !!(context?.content || context?.mainContent)
-    );
-    console.log(
-      "[App] Context content length:",
-      (context?.content || context?.mainContent || "").length
-    );
 
-    // Check if we have context loaded
     if (!this.contextManager || !this.contextManager.hasContext()) {
       this.showError("Bitte lade zuerst den Seitenkontext");
       return;
     }
 
-    // Check if authenticated
-    if (!this.isAuthenticated) {
+    if (!this.store.get("auth.isAuthenticated")) {
       this.showError("Bitte melde dich erst an");
       return;
     }
 
-    // Ensure chat controller is initialized
     if (!this.chatController || !this.chatController.isInitialized) {
       console.log("[App] Chat controller not ready, initializing...");
       try {
@@ -1219,20 +1047,17 @@ class CompanyGPTChat {
       }
     }
 
-    // Find the clicked button & add loading state
     const button = document.querySelector(
       `.context-action-btn[data-action="${action}"]`
     );
     if (button) button.classList.add("loading");
 
-    // Flags derived from current context
     const isGmail = !!context?.isGmail || context?.sourceType === "gmail";
     const isGoogleDocs =
       !!context?.isGoogleDocs || context?.sourceType === "docs";
     const isDocumentLike =
       isGoogleDocs || !!context?.isDocument || !!context?.isPage;
 
-    // Build the query based on action
     let query = "";
     switch (action) {
       case "summarize":
@@ -1294,40 +1119,33 @@ class CompanyGPTChat {
     }
 
     try {
-      // Clear input field
       if (this.elements?.messageInput) {
         this.elements.messageInput.value = "";
       }
 
-      // Add user message to chat (for UI)
       this.addMessage(query, "user");
 
-      // Show thinking indicator
       const thinkingId = this.showTypingIndicator();
 
-      // Log what we're about to send
       console.log("[App] Sending to chat controller:");
       console.log("  Query:", query);
       console.log("  Context:", context);
 
-      // Send to CompanyGPT API with the same context instance
       const response = await this.chatController.sendMessage(query, context);
 
-      // Remove thinking indicator
       this.removeTypingIndicator(thinkingId);
 
-      // Stream the response
       const messageId = this.startStreamingMessage();
       await this.streamText(messageId, response?.content || "", 3);
     } catch (error) {
       console.error("[App] Failed to process context action:", error);
       this.showError(`Fehler: ${error.message}`);
     } finally {
-      // Remove loading state from button
       if (button) button.classList.remove("loading");
     }
   }
 }
+
 // Initialize app when DOM is ready
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", () => {
