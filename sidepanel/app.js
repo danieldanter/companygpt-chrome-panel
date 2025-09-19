@@ -5,13 +5,18 @@ import { ContextManager } from "./modules/context-manager.js";
 
 class CompanyGPTChat {
   constructor() {
+    // ===== NEW: Use AppStore =====
+    this.store = window.AppStore;
+
     this.chatController = null;
     this.messageRenderer = null;
     this.contextAnalyzer = null;
     this.currentTabInfo = null;
     this.isInitialized = false;
-    this.isAuthenticated = false; // Track auth state
-    this.authCheckInProgress = false; // Prevent multiple auth checks
+
+    // OLD: Keep these for now (we'll remove later)
+    this.isAuthenticated = false;
+    this.authCheckInProgress = false;
 
     // Session/context management (kept minimal)
     this.lastKnownUrl = null;
@@ -23,6 +28,51 @@ class CompanyGPTChat {
 
     // Cache UI refs
     this.elements = {};
+
+    // ===== NEW: Setup state subscriptions =====
+    this.setupStateSubscriptions();
+  }
+
+  // ===== NEW METHOD: State subscriptions =====
+  setupStateSubscriptions() {
+    console.log("[App] Setting up state subscriptions...");
+
+    // Sync auth state between old and new
+    this.store.subscribe("auth.isAuthenticated", (isAuth) => {
+      console.log("[App] Auth state changed:", isAuth);
+      this.isAuthenticated = isAuth; // Keep old variable in sync
+
+      // Update UI
+      this.updateAuthStatus(isAuth, this.store.get("auth.domain"));
+
+      // Show/hide login overlay
+      if (!isAuth && !this.authCheckInProgress) {
+        this.showLoginOverlay(this.store.get("auth.domain"));
+      } else if (isAuth) {
+        this.hideLoginOverlay();
+      }
+    });
+
+    // Subscribe to UI errors
+    this.store.subscribe("ui.errors", (errors) => {
+      if (errors && errors.length > 0) {
+        const latestError = errors[errors.length - 1];
+        this.showError(latestError.message);
+      }
+    });
+
+    // Subscribe to context changes
+    this.store.subscribe("context.isLoaded", (isLoaded) => {
+      console.log("[App] Context loaded state:", isLoaded);
+      // Your context manager will handle this
+    });
+
+    // Subscribe to active view changes
+    this.store.subscribe("ui.activeView", (view) => {
+      console.log("[App] View changed to:", view);
+      this.showView(view);
+      this.setActiveButton(view === "chat" ? "btnChat" : "btnSettings");
+    });
   }
 
   async initialize() {
@@ -228,30 +278,24 @@ class CompanyGPTChat {
   }
 
   // Clear chat history
+  // In app.js
   async clearChatHistory() {
-    try {
-      // Clear storage
-      await chrome.storage.local.remove(["chatHistory", "chatSessionId"]);
+    console.log("[App] Clearing all chat data");
 
-      // Clear the UI
-      if (this.elements.messagesContainer) {
-        this.elements.messagesContainer.innerHTML = `
-          <div class="message assistant">
-            Chat-Verlauf wurde gelöscht. Neuer Chat gestartet! ✨
-          </div>
-        `;
-      }
+    // Clear store
+    this.store.set("chat.messages", []);
+    this.store.set("chat.sessionId", null);
 
-      // Reset chat controller
-      if (this.chatController) {
-        this.chatController.messages = [];
-        this.chatController.sessionId = null;
-      }
+    // Clear storage
+    await chrome.storage.local.remove(["chatHistory", "chatSessionId"]);
 
-      console.log("[App] Chat history cleared");
-    } catch (error) {
-      console.error("[App] Failed to clear chat history:", error);
-      this.showError("Fehler beim Löschen des Chat-Verlaufs");
+    // Clear UI
+    if (this.elements.messagesContainer) {
+      this.elements.messagesContainer.innerHTML = `
+        <div class="message assistant">
+          Chat gelöscht. Neuer Start! ✨
+        </div>
+      `;
     }
   }
 
@@ -329,82 +373,65 @@ class CompanyGPTChat {
   }
 
   async handleLogin() {
-    console.log("[App] Opening login page]");
+    console.log("[App] Opening login page with new state system");
+
+    // Set loading state
+    this.store.set("ui.isLoading", true);
 
     try {
-      let loginUrl = "";
-      let domain = "";
+      let domain =
+        this.store.get("auth.domain") ||
+        this.store.get("auth.activeDomain") ||
+        window.AuthService?.getActiveDomain();
 
-      // Try to get domain from CONFIG
-      if (window.CONFIG?.DOMAIN) {
-        domain = window.CONFIG.DOMAIN;
-      }
-
-      // If no domain from CONFIG, check AuthService
-      if (!domain && window.AuthService?.getActiveDomain) {
-        domain = window.AuthService.getActiveDomain();
-      }
-
-      // If still no domain, check the input field
       if (!domain && this.elements.domainInput) {
         const inputValue = this.elements.domainInput.value.trim();
         if (inputValue) {
-          // Validate subdomain format
           if (!/^[a-z0-9-]+$/.test(inputValue)) {
-            alert(
+            this.store.actions.showError(
               "Ungültige Subdomain. Bitte nur Kleinbuchstaben, Zahlen und Bindestriche verwenden."
             );
             return;
           }
           domain = inputValue;
 
-          // Save for future use
+          // Save to store and chrome storage
+          this.store.set("auth.domain", domain);
           await chrome.storage.local.set({ lastKnownDomain: domain });
         }
       }
 
-      // If still no domain, prompt user
       if (!domain) {
         const subdomain = prompt(
           'Bitte gib deine Firmen-Subdomain ein (z.B. "firma" für firma.506.ai):'
         );
         if (!subdomain) {
+          this.store.set("ui.isLoading", false);
           return;
         }
         domain = subdomain.trim().toLowerCase();
 
-        // Save for future use
+        // Save to store
+        this.store.set("auth.domain", domain);
         await chrome.storage.local.set({ lastKnownDomain: domain });
       }
 
-      // Build login URL
-      loginUrl = `https://${domain}.506.ai/de/login?callbackUrl=%2F`;
-
+      const loginUrl = `https://${domain}.506.ai/de/login?callbackUrl=%2F`;
       console.log("[App] Opening login URL:", loginUrl);
 
-      // Open login in new tab
       await chrome.tabs.create({ url: loginUrl });
 
-      // Update UI to show waiting state
+      // Update UI state
       this.elements.btnLogin && (this.elements.btnLogin.style.display = "none");
       this.elements.btnCheckAuth &&
         (this.elements.btnCheckAuth.style.display = "block");
       this.elements.loginHint &&
         (this.elements.loginHint.style.display = "flex");
-
-      // Update domain display if it wasn't shown before
-      if (domain && this.elements.domainStatus) {
-        this.elements.domainStatus.style.display = "block";
-        this.elements.detectedDomain &&
-          (this.elements.detectedDomain.textContent = domain + ".506.ai");
-        this.elements.domainInputGroup &&
-          (this.elements.domainInputGroup.style.display = "none");
-      }
-
-      // Wait for user to click "Anmeldung prüfen"
     } catch (error) {
       console.error("[App] Failed to open login:", error);
-      this.showError("Fehler beim Öffnen der Anmeldeseite");
+      this.store.actions.showError("Fehler beim Öffnen der Anmeldeseite");
+    } finally {
+      this.store.set("ui.isLoading", false);
     }
   }
 
@@ -546,42 +573,44 @@ class CompanyGPTChat {
   // Resilient auth check
   // Resilient auth check
   async checkAuth() {
-    console.log("[App] Checking authentication...]");
+    console.log("[App] Checking authentication with new state system...");
 
     try {
-      // Just use AuthService - it should handle everything
-      const isAuth = await window.AuthService.checkAuth(true); // Force refresh
+      // Update state to show checking
+      this.store.set("ui.isLoading", true);
+
+      // Use AuthService but sync with store
+      const isAuth = await window.AuthService.checkAuth(true);
       const domain = window.AuthService.getActiveDomain();
 
-      console.log("[App] AuthService check result:", isAuth, "Domain:", domain);
+      console.log("[App] Auth check result:", isAuth, "Domain:", domain);
 
-      this.updateAuthStatus(isAuth, domain);
+      // Update store with auth info - SINGLE SOURCE OF TRUTH
+      this.store.batch({
+        "auth.isAuthenticated": isAuth,
+        "auth.domain": domain,
+        "auth.activeDomain": domain,
+        "auth.hasMultipleDomains": window.AuthService.hasMultipleDomains(),
+        "auth.availableDomains": window.AuthService.getAvailableDomains(),
+      });
 
-      // Only show/hide overlay if not already checking
-      if (!this.authCheckInProgress) {
-        if (!isAuth) {
-          this.showLoginOverlay(domain);
-        } else {
-          this.hideLoginOverlay();
-        }
-      }
-
-      console.log("[App] Auth result:", isAuth, "Domain:", domain);
-      console.log(
-        "[App] AuthService domain:",
-        window.AuthService?.getActiveDomain()
-      );
       return isAuth;
     } catch (error) {
       console.error("[App] Auth check failed:", error);
-      this.updateAuthStatus(false);
 
-      // Only show overlay if this is not a recheck
-      if (!this.authCheckInProgress) {
-        this.showLoginOverlay(null);
-      }
+      // Update store on error
+      this.store.batch({
+        "auth.isAuthenticated": false,
+        "auth.domain": null,
+        "ui.showLoginOverlay": true,
+      });
+
+      // Add error to state
+      this.store.actions.showError("Auth check failed: " + error.message);
 
       return false;
+    } finally {
+      this.store.set("ui.isLoading", false);
     }
   }
 
@@ -608,31 +637,124 @@ class CompanyGPTChat {
   }
 
   // === CHAT ===
-  async sendMessage() {
-    const message = this.elements.messageInput?.value?.trim();
-    if (!message) return;
+  async sendMessage(text, context = null) {
+    console.log("[ChatController] === SENDING MESSAGE ===");
+    console.log("[ChatController] Text:", text);
 
-    console.log("[App] Sending message:", message);
-
-    // Check if authenticated
-    if (!this.isAuthenticated) {
-      this.showError("Bitte melde dich erst an");
-      return;
+    if (!this.isInitialized) {
+      throw new Error("ChatController not initialized");
     }
 
-    // Check if chat controller is initialized
-    if (!this.chatController || !this.chatController.isInitialized) {
-      console.log("[App] ChatController not ready, initializing...");
+    // Build the message
+    let finalContent = text;
+    if (context && (context.mainContent || context.content)) {
+      const contextContent = context.mainContent || context.content;
+      finalContent = `[Email-Kontext]\n${contextContent}\n\n[Anfrage]\n${text}`;
+      console.log(
+        "[ChatController] Added context, length:",
+        finalContent.length
+      );
+    }
+
+    const userMessage = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      role: "user",
+      content: finalContent,
+      timestamp: Date.now(),
+      references: [],
+      sources: [],
+    };
+
+    // Get messages, add new one
+    const currentMessages = this.store.get("chat.messages") || [];
+    currentMessages.push(userMessage);
+
+    // IMMEDIATELY use these messages for the payload
+    const sessionId = this.store.get("chat.sessionId") || this.generateChatId();
+
+    const chatPayload = {
+      id: sessionId,
+      folderId: this.store.get("chat.folderId"),
+      messages: currentMessages.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+        references: msg.references || [],
+        sources: msg.sources || [],
+      })),
+      model: this.model,
+      name: "Neuer Chat",
+      roleId: this.store.get("chat.roleId"),
+      selectedAssistantId: "",
+      selectedDataCollections: [],
+      selectedFiles: [],
+      selectedMode: "BASIC",
+      temperature: 0.2,
+    };
+
+    console.log("[ChatController] SENDING PAYLOAD:");
+    console.log("  Messages:", chatPayload.messages.length);
+    console.log(
+      "  Last msg:",
+      chatPayload.messages[chatPayload.messages.length - 1]?.content?.substring(
+        0,
+        100
+      )
+    );
+
+    // NOW update the store (after building payload)
+    this.store.set("chat.messages", currentMessages);
+    this.store.set("chat.sessionId", sessionId);
+
+    try {
+      this.store.set("chat.isStreaming", true);
+
+      const domain =
+        this.store.get("auth.domain") || this.store.get("auth.activeDomain");
+      const chatUrl = `https://${domain}.506.ai/api/qr/chat`;
+
+      console.log(
+        "[ChatController] Calling API with",
+        chatPayload.messages.length,
+        "messages"
+      );
+
+      const response = await this.makeAuthenticatedRequest(chatUrl, {
+        method: "POST",
+        body: JSON.stringify(chatPayload),
+      });
+
+      const responseText = await response.text();
+      let assistantContent;
       try {
-        await this.initializeChat();
-      } catch (error) {
-        this.showError("Chat konnte nicht initialisiert werden");
-        return;
+        const jsonResponse = JSON.parse(responseText);
+        assistantContent =
+          jsonResponse.content || jsonResponse.message || responseText;
+      } catch {
+        assistantContent = responseText;
       }
-    }
 
-    // No automatic context switching — rely on ContextManager if user loaded one
-    await this.processSendMessage(message);
+      // Add assistant response
+      const assistantMessage = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        role: "assistant",
+        content: assistantContent,
+        timestamp: Date.now(),
+        references: [],
+        sources: [],
+      };
+
+      // Get fresh messages and add response
+      const updatedMessages = this.store.get("chat.messages") || [];
+      updatedMessages.push(assistantMessage);
+      this.store.set("chat.messages", updatedMessages);
+
+      return assistantMessage;
+    } catch (error) {
+      console.error("[ChatController] Send failed:", error);
+      throw error;
+    } finally {
+      this.store.set("chat.isStreaming", false);
+    }
   }
 
   async processSendMessage(message) {
@@ -1121,7 +1243,24 @@ class CompanyGPTChat {
 
   // Add this method to CompanyGPTChat class
   async handleContextAction(action) {
-    console.log("[App] Context action triggered:", action);
+    console.log("[App] ========== CONTEXT ACTION DEBUG ==========");
+    console.log("[App] Action:", action);
+
+    // Check context manager
+    console.log("[App] ContextManager exists:", !!this.contextManager);
+    console.log("[App] HasContext:", this.contextManager?.hasContext());
+
+    // Get context (single source of truth)
+    const context = this.contextManager?.getContextForMessage();
+    console.log("[App] Context retrieved:", context);
+    console.log(
+      "[App] Context has content:",
+      !!(context?.content || context?.mainContent)
+    );
+    console.log(
+      "[App] Context content length:",
+      (context?.content || context?.mainContent || "").length
+    );
 
     // Check if we have context loaded
     if (!this.contextManager || !this.contextManager.hasContext()) {
@@ -1135,7 +1274,7 @@ class CompanyGPTChat {
       return;
     }
 
-    // IMPORTANT: Check if chat controller is initialized
+    // Ensure chat controller is initialized
     if (!this.chatController || !this.chatController.isInitialized) {
       console.log("[App] Chat controller not ready, initializing...");
       try {
@@ -1152,20 +1291,15 @@ class CompanyGPTChat {
     );
     if (button) button.classList.add("loading");
 
-    let query = "";
-    // Prefer the "currentContext" but fall back to the older getter for compatibility
-    const runtimeContext =
-      this.contextManager?.currentContext ||
-      (this.contextManager.getContextForMessage
-        ? this.contextManager.getContextForMessage()
-        : null);
-
-    // Defensive flags so we don't crash if shape changes
-    const isGmail = !!runtimeContext?.isGmail;
-    const isGoogleDocs = !!runtimeContext?.isGoogleDocs;
+    // Flags derived from current context
+    const isGmail = !!context?.isGmail || context?.sourceType === "gmail";
+    const isGoogleDocs =
+      !!context?.isGoogleDocs || context?.sourceType === "docs";
     const isDocumentLike =
-      isGoogleDocs || !!runtimeContext?.isDocument || !!runtimeContext?.isPage;
+      isGoogleDocs || !!context?.isDocument || !!context?.isPage;
 
+    // Build the query based on action
+    let query = "";
     switch (action) {
       case "summarize":
         if (isGmail) {
@@ -1180,7 +1314,6 @@ class CompanyGPTChat {
         break;
 
       case "reply":
-        // Only for emails
         if (!isGmail) {
           this.showError("Diese Aktion ist nur für E-Mails verfügbar.");
           if (button) button.classList.remove("loading");
@@ -1191,7 +1324,6 @@ class CompanyGPTChat {
         break;
 
       case "reply-with-data":
-        // Only for emails
         if (!isGmail) {
           this.showError("Diese Aktion ist nur für E-Mails verfügbar.");
           if (button) button.classList.remove("loading");
@@ -1202,7 +1334,6 @@ class CompanyGPTChat {
         break;
 
       case "analyze":
-        // For documents
         if (!isDocumentLike) {
           this.showError("Diese Aktion ist für Dokumente gedacht.");
           if (button) button.classList.remove("loading");
@@ -1213,7 +1344,6 @@ class CompanyGPTChat {
         break;
 
       case "ask-questions":
-        // For documents - generate questions
         if (!isDocumentLike) {
           this.showError("Diese Aktion ist für Dokumente gedacht.");
           if (button) button.classList.remove("loading");
@@ -1235,22 +1365,19 @@ class CompanyGPTChat {
         this.elements.messageInput.value = "";
       }
 
-      // Add user message to chat
+      // Add user message to chat (for UI)
       this.addMessage(query, "user");
 
       // Show thinking indicator
       const thinkingId = this.showTypingIndicator();
 
-      // Build/send context for API (use legacy getter if available)
-      const sendContext = this.contextManager.getContextForMessage
-        ? this.contextManager.getContextForMessage()
-        : runtimeContext;
+      // Log what we're about to send
+      console.log("[App] Sending to chat controller:");
+      console.log("  Query:", query);
+      console.log("  Context:", context);
 
-      // Send to CompanyGPT API
-      const response = await this.chatController.sendMessage(
-        query,
-        sendContext
-      );
+      // Send to CompanyGPT API with the same context instance
+      const response = await this.chatController.sendMessage(query, context);
 
       // Remove thinking indicator
       this.removeTypingIndicator(thinkingId);

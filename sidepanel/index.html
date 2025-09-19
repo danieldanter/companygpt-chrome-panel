@@ -312,14 +312,15 @@
       </div>
     </div>
 
-    <!-- Load shared services first -->
+    <!-- Update script loading order -->
     <script src="../shared/config.js"></script>
+    <script src="../shared/state-manager.js"></script>
+    <script src="../shared/devtools.js"></script>
+    <script src="../shared/app-store.js"></script>
+    <!-- <script src="../shared/simple-state.js"></script> -->
+    <!-- COMMENT OUT -->
     <script src="../shared/auth-service.js"></script>
     <script src="../shared/api-service.js"></script>
-    <script src="../shared/config.js"></script>
-    <script src="../shared/simple-state.js"></script>
-    <!-- ADD THIS -->
-    <!-- Load main app -->
     <script type="module" src="app.js"></script>
   </body>
 </html>

@@ -2,14 +2,17 @@
 
 export class ChatController {
   constructor() {
-    // Chat state
+    // ===== NEW: Use AppStore =====
+    this.store = window.AppStore;
+
+    // OLD: Keep for compatibility
     this.messages = [];
     this.currentContext = null;
     this.sessionId = null; // Will be generated on first message
     this.isInitialized = false;
     this.isStreaming = false;
     this.abortController = null;
-    this.lastUserIntent = null; // Add this line to track intent
+    this.lastUserIntent = null; // track intent
 
     // CompanyGPT specific data
     this.folderId = null;
@@ -23,6 +26,9 @@ export class ChatController {
 
     // Debug flag
     this.debug = true;
+
+    // ===== NEW: Setup state sync =====
+    this.setupStateSync();
   }
 
   /**
@@ -34,53 +40,120 @@ export class ChatController {
     }
   }
 
+  // ===== ADD THIS NEW METHOD =====
+  setupStateSync() {
+    console.log("[ChatController] Setting up state sync...");
+
+    // Sync messages with store
+    this.store.subscribe("chat.messages", (messages) => {
+      this.messages = messages || []; // Keep old array in sync
+      console.log(
+        "[ChatController] Messages synced from store:",
+        this.messages.length
+      );
+    });
+
+    // Sync session ID
+    this.store.subscribe("chat.sessionId", (sessionId) => {
+      this.sessionId = sessionId;
+      console.log("[ChatController] Session ID synced:", sessionId);
+    });
+
+    // Sync streaming state
+    this.store.subscribe("chat.isStreaming", (isStreaming) => {
+      this.isStreaming = isStreaming;
+    });
+
+    // Sync folder/role IDs
+    this.store.subscribe("chat.folderId", (folderId) => {
+      this.folderId = folderId;
+    });
+
+    this.store.subscribe("chat.roleId", (roleId) => {
+      this.roleId = roleId;
+    });
+
+    // Sync last user intent
+    this.store.subscribe("chat.lastUserIntent", (intent) => {
+      this.lastUserIntent = intent;
+    });
+  }
+
   /**
    * Initialize the chat controller
    */
   async initialize() {
-    this.log("Initializing...");
+    this.log("Initializing with state management...");
 
     try {
       // Load folders and roles from CompanyGPT
       await this.loadFoldersAndRoles();
 
-      // Load chat history from storage (if any)
-      this.messages = await this.loadHistory();
+      // ===== NEW: Load from store instead of chrome.storage =====
+      const storedMessages = this.store.get("chat.messages") || [];
+      const storedSessionId = this.store.get("chat.sessionId");
+
+      if (storedSessionId) {
+        this.log("Restored session from store:", storedSessionId);
+      }
+
+      if (storedMessages.length > 0) {
+        // Only load messages from today
+        const today = new Date().toDateString();
+        const todaysMessages = storedMessages.filter((msg) => {
+          const msgDate = new Date(msg.timestamp || Date.now()).toDateString();
+          return msgDate === today;
+        });
+
+        // Update store with filtered messages
+        this.store.set("chat.messages", todaysMessages);
+        this.log(`Loaded ${todaysMessages.length} messages from store`);
+      }
 
       // Set up message handlers
       this.setupMessageHandlers();
 
       this.isInitialized = true;
+
+      // ===== NEW: Update store =====
+      this.store.set("chat.initialized", true);
+
       this.log("Initialized successfully", {
         folderId: this.folderId,
         roleId: this.roleId,
-        messagesLoaded: this.messages.length,
+        messagesLoaded: this.store.get("chat.messages").length,
       });
 
       return true;
     } catch (error) {
       console.error("[ChatController] Initialization failed:", error);
       this.isInitialized = false;
+      this.store.set("chat.initialized", false);
+      this.store.actions.showError(
+        "Chat initialization failed: " + (error?.message || String(error))
+      );
       return false;
     }
   }
 
   /**
-   * Load folders and roles from CompanyGPT API
+   * Load folders and roles - Update to use store
    */
   async loadFoldersAndRoles() {
     this.log("Loading folders and roles...");
 
     try {
-      // Get domain from auth service
-      const domain = window.AuthService?.getActiveDomain();
+      // Get domain from store instead of AuthService
+      const domain =
+        this.store.get("auth.domain") || this.store.get("auth.activeDomain");
+
       if (!domain) {
         throw new Error(
           "No domain configured. Please ensure you're logged in."
         );
       }
 
-      this.log("Using domain:", domain);
+      this.log("Using domain from store:", domain);
 
       // Load folders
       const foldersUrl = `https://${domain}.506.ai/api/folders`;
@@ -99,9 +172,10 @@ export class ChatController {
         throw new Error("No ROOT_CHAT folder found");
       }
 
-      this.folderId = rootChatFolder.id;
+      // ===== NEW: Update store =====
+      this.store.set("chat.folderId", rootChatFolder.id);
       this.log("Found ROOT_CHAT folder:", {
-        id: this.folderId,
+        id: rootChatFolder.id,
         name: rootChatFolder.name,
       });
 
@@ -120,18 +194,18 @@ export class ChatController {
         // Fallback to first role if no default
         const firstRole = rolesData.roles?.[0];
         if (firstRole) {
-          this.roleId = firstRole.roleId;
+          this.store.set("chat.roleId", firstRole.roleId);
           this.log("No default role found, using first role:", {
-            id: this.roleId,
+            id: firstRole.roleId,
             name: firstRole.name,
           });
         } else {
           throw new Error("No roles available");
         }
       } else {
-        this.roleId = defaultRole.roleId;
+        this.store.set("chat.roleId", defaultRole.roleId);
         this.log("Found default role:", {
-          id: this.roleId,
+          id: defaultRole.roleId,
           name: defaultRole.name,
         });
       }
@@ -155,7 +229,7 @@ export class ChatController {
       credentials: "include",
     };
 
-    // Merge options
+    // Merge options (body etc. from options should override defaults)
     const finalOptions = { ...defaultOptions, ...options };
 
     this.log("Making authenticated request:", url, finalOptions);
@@ -169,11 +243,11 @@ export class ChatController {
       },
     });
 
-    if (!response.success) {
-      throw new Error(response.error || "API request failed");
+    if (!response?.success) {
+      throw new Error(response?.error || "API request failed");
     }
 
-    // Convert response to look like fetch response
+    // Convert response to resemble fetch response
     return {
       ok: true,
       json: async () => response.data,
@@ -181,58 +255,57 @@ export class ChatController {
     };
   }
 
-  // chat-controller.js - PROPER state-based intent detection
-
+  // ===== UPDATE detectIntent to use store =====
   detectIntent(text, context) {
-    // Just check the context SOURCE, not the words!
+    // Get context from store if not provided
+    if (!context) {
+      context = this.store.get("context");
+    }
 
     if (context?.isGmail || context?.sourceType === "gmail") {
-      // We're in Gmail context - show email actions
       return "email-reply";
     }
-
     if (context?.isGoogleDocs || context?.sourceType === "docs") {
-      // We're in Docs context - show doc actions
       return "doc-actions";
     }
-
     if (context?.sourceType === "calendar") {
-      // We're in Calendar context - show calendar actions
       return "calendar-actions";
     }
-
-    // No special context loaded
     return "general";
   }
 
   getLastUserIntent() {
-    return this.lastUserIntent;
+    // Get from store
+    return this.store.get("chat.lastUserIntent") || this.lastUserIntent;
   }
 
   /**
-   * Send a message to the CompanyGPT API
+   * Send a message - Update to use store
    */
   async sendMessage(text, context = null) {
     if (!this.isInitialized) {
       throw new Error("ChatController not initialized");
     }
 
-    this.lastUserIntent = this.detectIntent(text, context);
-    this.log("Detected intent:", this.lastUserIntent);
+    // Detect and store intent
+    const intent = this.detectIntent(text, context);
+    this.store.set("chat.lastUserIntent", intent);
+    this.store.set("chat.currentIntent", intent);
 
-    if (!this.sessionId) {
-      this.sessionId = this.generateChatId();
+    this.log("Detected intent:", intent);
+
+    // Generate session ID if needed
+    if (!this.store.get("chat.sessionId")) {
+      const newSessionId = this.generateChatId();
+      this.store.set("chat.sessionId", newSessionId);
     }
 
-    // ============ THE CRITICAL FIX ============
-    // ALWAYS combine context into the content field!
+    // Build message content (combine context into the content field)
     let finalContent = text;
-
     if (context && (context.mainContent || context.selectedText)) {
       const contextContent = context.selectedText || context.mainContent;
-
-      // Determine context type for better formatting
       let contextLabel = "[Kontext]";
+
       if (context.isGmail) {
         contextLabel = "[Email-Kontext]";
       } else if (context.isGoogleDocs) {
@@ -245,46 +318,48 @@ export class ChatController {
         contextLabel = "[Webseiten-Kontext]";
       }
 
-      // COMBINE EVERYTHING INTO ONE STRING
       finalContent = `${contextLabel}\n${contextContent}\n\n[Benutzer-Anfrage]\n${text}`;
-
       this.log("Combined content length:", finalContent.length);
     }
 
-    // Create message with COMBINED content
+    // Create user message
     const userMessage = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       role: "user",
-      content: finalContent, // ← THIS is what the AI actually processes!
+      content: finalContent, // ← includes context if provided
+      timestamp: Date.now(),
       references: [],
-      sources: []
+      sources: [],
+      _originalText: text, // for UI display
+      _context: context, // raw context for UI
     };
 
-    // For display/UI purposes, keep originals
-    userMessage._originalText = text; // Store original for UI display
-    userMessage._context = context;   // Store context for reference
-
-    this.messages.push(userMessage);
+    // ===== NEW: Add message via store =====
+    const messages = [...(this.store.get("chat.messages") || []), userMessage];
+    this.store.set("chat.messages", messages);
 
     try {
-      this.isStreaming = true;
+      // Set streaming state
+      this.store.set("chat.isStreaming", true);
 
-      const domain = window.AuthService?.getActiveDomain();
+      const domain =
+        this.store.get("auth.domain") || this.store.get("auth.activeDomain");
       if (!domain) {
         throw new Error("No domain configured");
       }
 
       const chatPayload = {
-        id: this.sessionId,
-        folderId: this.folderId,
-        messages: this.messages.map(msg => ({
+        id: this.store.get("chat.sessionId"),
+        folderId: this.store.get("chat.folderId"),
+        messages: this.store.get("chat.messages").map((msg) => ({
           role: msg.role,
-          content: msg.content,       // This now includes context!
+          content: msg.content, // includes context
           references: msg.references || [],
-          sources: msg.sources || []
+          sources: msg.sources || [],
         })),
         model: this.model,
         name: "Neuer Chat",
-        roleId: this.roleId,
+        roleId: this.store.get("chat.roleId"),
         selectedAssistantId: "",
         selectedDataCollections: [],
         selectedFiles: [],
@@ -292,7 +367,7 @@ export class ChatController {
         temperature: 0.2,
       };
 
-      this.log("Sending to API with context included in content");
+      this.log("Sending to API with state from store");
 
       // Make chat API request
       const chatUrl = `https://${domain}.506.ai/api/qr/chat`;
@@ -313,40 +388,49 @@ export class ChatController {
         assistantContent =
           jsonResponse.content || jsonResponse.message || responseText;
       } catch {
-        // Response is plain text
         assistantContent = responseText;
       }
 
       // Create assistant message
       const assistantMessage = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         role: "assistant",
         content: assistantContent,
+        timestamp: Date.now(),
         references: [],
         sources: [],
       };
 
-      this.messages.push(assistantMessage);
-      await this.saveHistory();
+      // ===== NEW: Update store with assistant message =====
+      const updatedMessages = [
+        ...this.store.get("chat.messages"),
+        assistantMessage,
+      ];
+      this.store.set("chat.messages", updatedMessages);
 
-      this.log("Assistant response added to history");
+      this.log("Assistant response added to store");
 
       return assistantMessage;
     } catch (error) {
       console.error("[ChatController] Send message failed:", error);
-      // Remove the user message if request failed
-      this.messages.pop();
+
+      // Remove the failed user message from store
+      const revertedMessages = this.store.get("chat.messages").slice(0, -1);
+      this.store.set("chat.messages", revertedMessages);
+
+      // Add error to store
+      this.store.actions.showError(
+        "Failed to send message: " + (error?.message || String(error))
+      );
+
       throw error;
     } finally {
-      this.isStreaming = false;
+      this.store.set("chat.isStreaming", false);
     }
   }
 
-
   /**
-   * Build context string from page context
-   */
-  /**
-   * Build context string from page context
+   * Build context string from page context (kept for debugging/analysis)
    */
   buildContextString(context) {
     console.log("[ChatController] === CONTEXT STRING BUILDING START ===");
@@ -417,68 +501,26 @@ export class ChatController {
   }
 
   /**
-   * Clear chat history
+   * Clear chat history - Update to use store
    */
   async clearChat() {
-    this.log("Clearing chat");
+    this.log("Clearing chat via store");
 
-    this.messages = [];
-    this.sessionId = null; // Generate new ID for next chat
-    await this.saveHistory();
+    // Use store action
+    this.store.actions.clearChat();
 
-    this.log("Chat cleared");
+    this.log("Chat cleared in store");
   }
 
-  /**
-   * Load chat history from storage
-   */
+  // Remove old storage methods - we're using the store now!
   async loadHistory() {
-    try {
-      const result = await chrome.storage.local.get([
-        "chatHistory",
-        "chatSessionId",
-      ]);
-
-      if (result.chatSessionId) {
-        this.sessionId = result.chatSessionId;
-        this.log("Restored session ID:", this.sessionId);
-      }
-
-      if (result.chatHistory) {
-        // Only load history from the same day
-        const today = new Date().toDateString();
-        const history = result.chatHistory.filter((msg) => {
-          const msgDate = new Date(msg.timestamp || Date.now()).toDateString();
-          return msgDate === today;
-        });
-
-        this.log(`Loaded ${history.length} messages from history`);
-        return history;
-      }
-    } catch (error) {
-      console.error("[ChatController] Failed to load history:", error);
-    }
-
-    return [];
+    // Deprecated - using store
+    return this.store.get("chat.messages") || [];
   }
 
-  /**
-   * Save chat history to storage
-   */
   async saveHistory() {
-    try {
-      // Keep only last 50 messages
-      const toSave = this.messages.slice(-50);
-
-      await chrome.storage.local.set({
-        chatHistory: toSave,
-        chatSessionId: this.sessionId,
-      });
-
-      this.log("Saved", toSave.length, "messages to storage");
-    } catch (error) {
-      console.error("[ChatController] Failed to save history:", error);
-    }
+    // Deprecated - store handles persistence automatically
+    this.log("History auto-saved via store");
   }
 
   /**
@@ -486,7 +528,7 @@ export class ChatController {
    */
   setupMessageHandlers() {
     // Listen for streaming updates from background
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    chrome.runtime.onMessage.addListener((message) => {
       if (message.type === "STREAMING_UPDATE") {
         this.handleStreamingUpdate(message.data);
       }

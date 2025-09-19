@@ -2,6 +2,11 @@
 export class ContextManager {
   constructor(app) {
     this.app = app;
+
+    // ===== NEW: Use AppStore =====
+    this.store = window.AppStore;
+
+    // OLD: Keep for compatibility during migration
     this.currentContext = null;
     this.isLoaded = false;
     this.lastUrl = null;
@@ -14,6 +19,9 @@ export class ContextManager {
     this.contextBar = null;
     this.contextText = null;
     this.clearButton = null;
+
+    // ===== NEW: Sync with store =====
+    this.setupStateSync();
 
     chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       if (
@@ -28,8 +36,37 @@ export class ContextManager {
         }
       }
     });
+
     // Initialize everything
     this.init();
+  }
+
+  // ===== ADD THIS NEW METHOD =====
+  setupStateSync() {
+    console.log("[ContextManager] Setting up state sync...");
+
+    // Subscribe to context changes from store
+    this.store.subscribe("context.isLoaded", (isLoaded) => {
+      this.isLoaded = isLoaded; // Keep old variable in sync
+
+      if (isLoaded) {
+        const context = this.store.get("context");
+        this.currentContext = context; // Sync old variable
+        this.showContextBar(context);
+      } else {
+        this.currentContext = null;
+        this.hideContextBar();
+      }
+    });
+
+    // Subscribe to tab changes
+    this.store.subscribe("tab.url", (url) => {
+      if (url && url !== this.lastUrl) {
+        console.log("[ContextManager] Tab URL changed via state:", url);
+        this.onPageChange(url);
+        this.lastUrl = url;
+      }
+    });
   }
 
   init() {
@@ -104,16 +141,20 @@ export class ContextManager {
     }, 3000);
   }
 
+  // ===== UPDATE loadPageContext METHOD =====
   async loadPageContext() {
     // Always clear old context first
-    if (this.hasContext()) {
+    if (this.store.get("context.isLoaded")) {
       console.log("[ContextManager] Clearing old context before loading new");
       this.clearContext();
     }
-    console.log("[ContextManager] Loading page context...");
+    console.log(
+      "[ContextManager] Loading page context with new state system..."
+    );
 
-    // Set loading state
+    // Update UI state
     this.setButtonState("loading");
+    this.store.set("ui.contextLoading", true);
 
     try {
       // Get page context
@@ -130,26 +171,26 @@ export class ContextManager {
       // Process the context
       const processedContext = this.processContext(context);
 
-      // Store context
-      this.currentContext = processedContext;
-      this.isLoaded = true;
+      // ===== NEW: Update store instead of local variables =====
+      this.store.actions.setContext(processedContext);
 
       // Update UI
       this.setButtonState("loaded");
-      this.showContextBar(processedContext);
 
-      console.log(
-        "[ContextManager] Context loaded successfully:",
-        processedContext
-      );
+      console.log("[ContextManager] Context loaded successfully via store");
     } catch (error) {
       console.error("[ContextManager] Failed to load context:", error);
       this.setButtonState("error");
+
+      // Add error to store
+      this.store.actions.showError(`Failed to load context: ${error.message}`);
 
       // Reset after 3 seconds
       setTimeout(() => {
         this.setButtonState("default");
       }, 3000);
+    } finally {
+      this.store.set("ui.contextLoading", false);
     }
   }
 
@@ -301,63 +342,7 @@ export class ContextManager {
     };
   }
 
-  async extractViaInjection(tabId) {
-    console.log("[ContextManager] Extracting via injection");
-
-    // First, try to inject our content script
-    try {
-      await chrome.scripting.executeScript({
-        target: { tabId },
-        files: ["content/content-script.js"],
-      });
-
-      // Wait for initialization
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      // Now try content script method
-      return await this.extractViaContentScript(tabId);
-    } catch (injectionError) {
-      console.error(
-        "[ContextManager] Script injection failed:",
-        injectionError
-      );
-
-      // Fallback to one-time injection
-      const results = await chrome.scripting.executeScript({
-        target: { tabId },
-        func: () => {
-          // Minimal extraction for fallback
-          return {
-            success: true,
-            title: document.title,
-            url: window.location.href,
-            selectedText: window.getSelection().toString(),
-            mainContent: document.body.innerText.substring(0, 5000),
-            metadata: {
-              method: "emergency-injection",
-            },
-          };
-        },
-      });
-
-      return results[0].result;
-    }
-  }
-
-  async extractViaHybrid(tabId) {
-    console.log("[ContextManager] Extracting via hybrid approach");
-
-    // Get initial content from content script
-    const contentResponse = await this.extractViaContentScript(tabId);
-
-    // Enhance with API data if needed
-    if (contentResponse.metadata?.needsExport) {
-      return await this.enhanceWithApiData(contentResponse);
-    }
-
-    return contentResponse;
-  }
-
+  // (Consolidated, final version)
   async extractViaInjection(tabId) {
     console.log("[ContextManager] Extracting via injection");
 
@@ -416,6 +401,20 @@ export class ContextManager {
 
       return results[0].result;
     }
+  }
+
+  async extractViaHybrid(tabId) {
+    console.log("[ContextManager] Extracting via hybrid approach");
+
+    // Get initial content from content script
+    const contentResponse = await this.extractViaContentScript(tabId);
+
+    // Enhance with API data if needed
+    if (contentResponse.metadata?.needsExport) {
+      return await this.enhanceWithApiData(contentResponse);
+    }
+
+    return contentResponse;
   }
 
   processContext(rawContext) {
@@ -497,7 +496,6 @@ export class ContextManager {
   }
 
   // context-manager.js - Add this function after extractViaInjection
-
   async enhanceWithApiData(response) {
     console.log("[ContextManager] Enhancing with API data");
     console.log("[ContextManager] Metadata:", response.metadata);
@@ -658,11 +656,12 @@ export class ContextManager {
     }
   }
 
+  // ===== UPDATE showContextBar METHOD =====
   showContextBar(context) {
     if (!this.contextBar || !this.contextText) return;
 
     // Build context info text
-    let contextInfo = `${context.title}`;
+    let contextInfo = `${context.title || "Untitled"}`;
 
     if (context.wordCount > 0) {
       contextInfo += ` (${context.wordCount} Wörter)`;
@@ -671,20 +670,23 @@ export class ContextManager {
     // Get the action buttons container
     const actionsRow = document.getElementById("context-actions-row");
 
+    // Update store for UI state
     if (context.isGmail) {
       contextInfo += ` • Gmail`;
+      this.store.set("ui.contextActionsVisible", true);
       if (actionsRow) {
         actionsRow.style.display = "flex";
         this.showEmailActions();
       }
     } else if (context.isGoogleDocs) {
       contextInfo += ` • Google Docs`;
+      this.store.set("ui.contextActionsVisible", true);
       if (actionsRow) {
         actionsRow.style.display = "flex";
         this.showDocumentActions();
       }
     } else {
-      // Hide action cards for other pages
+      this.store.set("ui.contextActionsVisible", false);
       if (actionsRow) {
         actionsRow.style.display = "none";
       }
@@ -694,8 +696,28 @@ export class ContextManager {
     this.contextText.textContent = contextInfo;
     this.contextBar.style.display = "flex";
 
+    // Update store
+    this.store.set("ui.contextBarVisible", true);
+
     if (this.clearButton) {
       this.clearButton.style.display = "flex";
+    }
+  }
+
+  // ===== UPDATE hideContextBar =====
+  hideContextBar() {
+    if (this.contextBar) {
+      this.contextBar.style.display = "none";
+    }
+
+    // Update store
+    this.store.set("ui.contextBarVisible", false);
+    this.store.set("ui.contextActionsVisible", false);
+
+    // Hide action cards row
+    const actionsRow = document.getElementById("context-actions-row");
+    if (actionsRow) {
+      actionsRow.style.display = "none";
     }
   }
 
@@ -750,43 +772,40 @@ export class ContextManager {
     }
   }
 
+  // ===== UPDATE clearContext METHOD =====
   clearContext() {
-    console.log("[ContextManager] Clearing context");
+    console.log("[ContextManager] Clearing context via store");
 
-    this.currentContext = null;
-    this.isLoaded = false;
+    // Use store action to clear
+    this.store.actions.clearContext();
 
+    // Update UI
     this.setButtonState("default");
 
-    if (this.contextBar) {
-      this.contextBar.style.display = "none";
-    }
-
-    // Hide action cards row
-    const actionsRow = document.getElementById("context-actions-row");
-    if (actionsRow) {
-      actionsRow.style.display = "none";
-    }
-
-    // Reset buttons to default state
-    const buttons = document.querySelectorAll(".context-action-btn");
-    buttons.forEach((btn) => {
-      btn.dataset.action = "";
-      btn.style.display = "none";
-    });
-
-    if (this.clearButton) {
-      this.clearButton.style.display = "none";
-    }
+    // These will be updated via subscription
+    // this.currentContext = null;  // No longer needed
+    // this.isLoaded = false;        // No longer needed
   }
+
+  // ===== UPDATE hasContext METHOD =====
+  hasContext() {
+    // Use store's computed property
+    return (
+      this.store.get("context.isLoaded") && this.store.get("context.content")
+    );
+  }
+
+  // ===== UPDATE getContextForMessage METHOD =====
   getContextForMessage() {
-    if (!this.isLoaded || !this.currentContext) {
+    if (!this.store.get("context.isLoaded")) {
       return null;
     }
 
-    // Enhanced context with state info
+    const context = this.store.get("context");
+
     return {
-      ...this.currentContext,
+      ...context,
+      mainContent: context.content, // <-- ADD JUST THIS LINE
       sourceType: this.detectSourceType(),
       isActive: this.isSourceStillActive(),
     };
@@ -805,10 +824,6 @@ export class ContextManager {
     // Check if the tab we extracted from is still open
     const tabs = await chrome.tabs.query({});
     return tabs.some((tab) => tab.url === this.currentContext?.url);
-  }
-
-  hasContext() {
-    return this.isLoaded && this.currentContext !== null;
   }
 
   getContextDisplay() {
