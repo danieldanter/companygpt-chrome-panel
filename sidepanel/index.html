@@ -128,21 +128,30 @@
 
       <!-- Input Area -->
       <footer class="input-area">
-        <!-- Context Bar (above input) -->
+        <!-- Context Bar (with integrated action cards) -->
         <div class="context-bar" id="context-bar" style="display: none">
+          <!-- First row: Context info -->
           <div class="context-info">
             <span class="context-icon">📄</span>
             <span class="context-text" id="context-text"
-              >No context loaded</span
+              >Kein Kontext geladen</span
             >
-          </div>
-          <div class="context-actions">
             <button
-              class="context-btn"
+              class="context-close-btn"
               id="clear-context"
-              title="Clear context"
-              style="display: none"
+              title="Kontext entfernen"
             >
+              ✕
+            </button>
+          </div>
+
+          <!-- Second row: Action buttons (compact) -->
+          <div
+            class="context-actions-row"
+            id="context-actions-row"
+            style="display: none"
+          >
+            <button class="context-action-btn" data-action="summarize">
               <svg
                 width="14"
                 height="14"
@@ -151,8 +160,41 @@
                 stroke="currentColor"
                 stroke-width="2"
               >
-                <path d="M18 6L6 18M6 6l12 12" />
+                <path
+                  d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+                />
+                <polyline points="14,2 14,8 20,8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
               </svg>
+              <span>Zusammenfassen</span>
+            </button>
+            <button class="context-action-btn" data-action="reply">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="9,10 4,15 9,20" />
+                <path d="M20 4v7a4 4 0 0 1-4 4H4" />
+              </svg>
+              <span>Antworten</span>
+            </button>
+            <button class="context-action-btn" data-action="reply-with-data">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+              </svg>
+              <span>Mit Datenspeicher antworten</span>
             </button>
           </div>
         </div>
@@ -163,7 +205,7 @@
           <button
             class="context-load-btn"
             id="load-context-btn"
-            title="Load page context"
+            title="Seitenkontext laden"
           >
             <svg
               width="16"

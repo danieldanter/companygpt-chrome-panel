@@ -206,6 +206,14 @@ class CompanyGPTChat {
         }
       }
     });
+
+    document.addEventListener("click", (e) => {
+      if (e.target.closest(".context-action-btn")) {
+        const button = e.target.closest(".context-action-btn");
+        const action = button.dataset.action;
+        this.handleContextAction(action);
+      }
+    });
   }
 
   // Confirm before clearing chat
@@ -795,16 +803,40 @@ class CompanyGPTChat {
       if (gmailTab) {
         console.log("[App] Found Gmail tab:", gmailTab.id);
 
-        // Send message to Gmail tab to insert reply
-        const response = await chrome.tabs.sendMessage(gmailTab.id, {
-          action: "INSERT_EMAIL_REPLY",
-          data: emailData,
-        });
+        try {
+          // Try the original method first (this always worked before)
+          const response = await chrome.tabs.sendMessage(gmailTab.id, {
+            action: "INSERT_EMAIL_REPLY",
+            data: emailData,
+          });
 
-        console.log("[App] Insert response:", response);
+          console.log("[App] Insert response:", response);
 
-        // Focus Gmail tab
-        await chrome.tabs.update(gmailTab.id, { active: true });
+          // Focus Gmail tab
+          await chrome.tabs.update(gmailTab.id, { active: true });
+        } catch (messageError) {
+          // Content script not responding - inject it
+          console.log("[App] Content script not responding, reinjecting...");
+
+          await chrome.scripting.executeScript({
+            target: { tabId: gmailTab.id },
+            files: ["content/content-script.js"],
+          });
+
+          // Wait for script to initialize
+          await new Promise((resolve) => setTimeout(resolve, 500));
+
+          // Try again
+          const response = await chrome.tabs.sendMessage(gmailTab.id, {
+            action: "INSERT_EMAIL_REPLY",
+            data: emailData,
+          });
+
+          console.log("[App] Insert response (second try):", response);
+
+          // Focus Gmail tab
+          await chrome.tabs.update(gmailTab.id, { active: true });
+        }
       } else {
         console.log("[App] No Gmail tab found, opening new one");
 
@@ -1086,8 +1118,155 @@ class CompanyGPTChat {
       this.scrollToBottom();
     }
   }
-}
 
+  // Add this method to CompanyGPTChat class
+  async handleContextAction(action) {
+    console.log("[App] Context action triggered:", action);
+
+    // Check if we have context loaded
+    if (!this.contextManager || !this.contextManager.hasContext()) {
+      this.showError("Bitte lade zuerst den Seitenkontext");
+      return;
+    }
+
+    // Check if authenticated
+    if (!this.isAuthenticated) {
+      this.showError("Bitte melde dich erst an");
+      return;
+    }
+
+    // IMPORTANT: Check if chat controller is initialized
+    if (!this.chatController || !this.chatController.isInitialized) {
+      console.log("[App] Chat controller not ready, initializing...");
+      try {
+        await this.initializeChat();
+      } catch (error) {
+        this.showError("Chat konnte nicht initialisiert werden");
+        return;
+      }
+    }
+
+    // Find the clicked button & add loading state
+    const button = document.querySelector(
+      `.context-action-btn[data-action="${action}"]`
+    );
+    if (button) button.classList.add("loading");
+
+    let query = "";
+    // Prefer the "currentContext" but fall back to the older getter for compatibility
+    const runtimeContext =
+      this.contextManager?.currentContext ||
+      (this.contextManager.getContextForMessage
+        ? this.contextManager.getContextForMessage()
+        : null);
+
+    // Defensive flags so we don't crash if shape changes
+    const isGmail = !!runtimeContext?.isGmail;
+    const isGoogleDocs = !!runtimeContext?.isGoogleDocs;
+    const isDocumentLike =
+      isGoogleDocs || !!runtimeContext?.isDocument || !!runtimeContext?.isPage;
+
+    switch (action) {
+      case "summarize":
+        if (isGmail) {
+          query =
+            "Bitte fasse mir den Email-Verlauf zusammen und bringe mich auf den neuesten Stand.";
+        } else if (isGoogleDocs) {
+          query =
+            "Bitte fasse mir dieses Dokument zusammen und erkläre die wichtigsten Punkte.";
+        } else {
+          query = "Bitte fasse mir den Inhalt dieser Seite zusammen.";
+        }
+        break;
+
+      case "reply":
+        // Only for emails
+        if (!isGmail) {
+          this.showError("Diese Aktion ist nur für E-Mails verfügbar.");
+          if (button) button.classList.remove("loading");
+          return;
+        }
+        query =
+          "Bitte beantworte mir diese Email professionell und freundlich.";
+        break;
+
+      case "reply-with-data":
+        // Only for emails
+        if (!isGmail) {
+          this.showError("Diese Aktion ist nur für E-Mails verfügbar.");
+          if (button) button.classList.remove("loading");
+          return;
+        }
+        query =
+          "Bitte beantworte mir diese Email und nutze dabei relevante Informationen aus unserem Datenspeicher.";
+        break;
+
+      case "analyze":
+        // For documents
+        if (!isDocumentLike) {
+          this.showError("Diese Aktion ist für Dokumente gedacht.");
+          if (button) button.classList.remove("loading");
+          return;
+        }
+        query =
+          "Bitte analysiere dieses Dokument und gib mir eine detaillierte Einschätzung.";
+        break;
+
+      case "ask-questions":
+        // For documents - generate questions
+        if (!isDocumentLike) {
+          this.showError("Diese Aktion ist für Dokumente gedacht.");
+          if (button) button.classList.remove("loading");
+          return;
+        }
+        query =
+          "Bitte erstelle mir wichtige Fragen zu diesem Dokument, die ich beantworten sollte.";
+        break;
+
+      default:
+        console.error("[App] Unknown action:", action);
+        if (button) button.classList.remove("loading");
+        return;
+    }
+
+    try {
+      // Clear input field
+      if (this.elements?.messageInput) {
+        this.elements.messageInput.value = "";
+      }
+
+      // Add user message to chat
+      this.addMessage(query, "user");
+
+      // Show thinking indicator
+      const thinkingId = this.showTypingIndicator();
+
+      // Build/send context for API (use legacy getter if available)
+      const sendContext = this.contextManager.getContextForMessage
+        ? this.contextManager.getContextForMessage()
+        : runtimeContext;
+
+      // Send to CompanyGPT API
+      const response = await this.chatController.sendMessage(
+        query,
+        sendContext
+      );
+
+      // Remove thinking indicator
+      this.removeTypingIndicator(thinkingId);
+
+      // Stream the response
+      const messageId = this.startStreamingMessage();
+      await this.streamText(messageId, response?.content || "", 3);
+    } catch (error) {
+      console.error("[App] Failed to process context action:", error);
+      this.showError(`Fehler: ${error.message}`);
+    } finally {
+      // Remove loading state from button
+      if (button) button.classList.remove("loading");
+    }
+  }
+}
 // Initialize app when DOM is ready
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", () => {

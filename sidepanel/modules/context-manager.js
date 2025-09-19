@@ -661,30 +661,92 @@ export class ContextManager {
   showContextBar(context) {
     if (!this.contextBar || !this.contextText) return;
 
+    // Build context info text
     let contextInfo = `${context.title}`;
 
     if (context.wordCount > 0) {
-      contextInfo += ` (${context.wordCount} words)`;
+      contextInfo += ` (${context.wordCount} Wörter)`;
     }
 
-    if (context.isGoogleDocs) {
-      contextInfo += ` • Google Docs`;
-    }
+    // Get the action buttons container
+    const actionsRow = document.getElementById("context-actions-row");
 
     if (context.isGmail) {
       contextInfo += ` • Gmail`;
+      if (actionsRow) {
+        actionsRow.style.display = "flex";
+        this.showEmailActions();
+      }
+    } else if (context.isGoogleDocs) {
+      contextInfo += ` • Google Docs`;
+      if (actionsRow) {
+        actionsRow.style.display = "flex";
+        this.showDocumentActions();
+      }
+    } else {
+      // Hide action cards for other pages
+      if (actionsRow) {
+        actionsRow.style.display = "none";
+      }
     }
 
-    // Show extraction method for debugging (remove in production)
-    if (context.metadata?.method) {
-      contextInfo += ` • ${context.metadata.method}`;
-    }
-
+    // Update context text
     this.contextText.textContent = contextInfo;
-    this.contextBar.style.display = "block";
+    this.contextBar.style.display = "flex";
 
     if (this.clearButton) {
-      this.clearButton.style.display = "block";
+      this.clearButton.style.display = "flex";
+    }
+  }
+
+  showEmailActions() {
+    console.log("[ContextManager] Showing email actions");
+
+    // Get fresh references to buttons
+    const buttons = document.querySelectorAll(".context-action-btn");
+
+    if (buttons[0]) {
+      buttons[0].dataset.action = "summarize";
+      buttons[0].querySelector("span").textContent = "Zusammenfassen";
+      buttons[0].style.display = "flex";
+    }
+
+    if (buttons[1]) {
+      buttons[1].dataset.action = "reply";
+      buttons[1].querySelector("span").textContent = "Antworten";
+      buttons[1].style.display = "flex";
+    }
+
+    if (buttons[2]) {
+      buttons[2].dataset.action = "reply-with-data";
+      buttons[2].querySelector("span").textContent =
+        "Mit Datenspeicher antworten";
+      buttons[2].style.display = "flex";
+    }
+  }
+
+  showDocumentActions() {
+    console.log("[ContextManager] Showing document actions");
+
+    // Get fresh references to buttons
+    const buttons = document.querySelectorAll(".context-action-btn");
+
+    if (buttons[0]) {
+      buttons[0].dataset.action = "summarize";
+      buttons[0].querySelector("span").textContent = "Zusammenfassen";
+      buttons[0].style.display = "flex";
+    }
+
+    if (buttons[1]) {
+      buttons[1].dataset.action = "analyze";
+      buttons[1].querySelector("span").textContent = "Analysieren";
+      buttons[1].style.display = "flex";
+    }
+
+    if (buttons[2]) {
+      buttons[2].dataset.action = "ask-questions";
+      buttons[2].querySelector("span").textContent = "Fragen stellen";
+      buttons[2].style.display = "flex";
     }
   }
 
@@ -700,11 +762,23 @@ export class ContextManager {
       this.contextBar.style.display = "none";
     }
 
+    // Hide action cards row
+    const actionsRow = document.getElementById("context-actions-row");
+    if (actionsRow) {
+      actionsRow.style.display = "none";
+    }
+
+    // Reset buttons to default state
+    const buttons = document.querySelectorAll(".context-action-btn");
+    buttons.forEach((btn) => {
+      btn.dataset.action = "";
+      btn.style.display = "none";
+    });
+
     if (this.clearButton) {
       this.clearButton.style.display = "none";
     }
   }
-
   getContextForMessage() {
     if (!this.isLoaded || !this.currentContext) {
       return null;
