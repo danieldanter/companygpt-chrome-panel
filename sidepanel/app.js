@@ -637,123 +637,57 @@ class CompanyGPTChat {
   }
 
   // === CHAT ===
-  async sendMessage(text, context = null) {
-    console.log("[ChatController] === SENDING MESSAGE ===");
-    console.log("[ChatController] Text:", text);
+  // In app.js - Replace the existing sendMessage handling with this:
 
-    if (!this.isInitialized) {
-      throw new Error("ChatController not initialized");
-    }
+  // This is the method called when user clicks send or presses enter
+  async sendMessage() {
+    const message = this.elements.messageInput?.value?.trim();
 
-    // Build the message
-    let finalContent = text;
-    if (context && (context.mainContent || context.content)) {
-      const contextContent = context.mainContent || context.content;
-      finalContent = `[Email-Kontext]\n${contextContent}\n\n[Anfrage]\n${text}`;
-      console.log(
-        "[ChatController] Added context, length:",
-        finalContent.length
-      );
-    }
+    if (!message) return;
 
-    const userMessage = {
-      id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      role: "user",
-      content: finalContent,
-      timestamp: Date.now(),
-      references: [],
-      sources: [],
-    };
+    // Clear input immediately
+    this.elements.messageInput.value = "";
+    this.elements.messageInput.style.height = "auto";
 
-    // Get messages, add new one
-    const currentMessages = this.store.get("chat.messages") || [];
-    currentMessages.push(userMessage);
+    console.log("[App] User sending message:", message);
 
-    // IMMEDIATELY use these messages for the payload
-    const sessionId = this.store.get("chat.sessionId") || this.generateChatId();
+    // Process the message
+    await this.processSendMessage(message);
+  }
 
-    const chatPayload = {
-      id: sessionId,
-      folderId: this.store.get("chat.folderId"),
-      messages: currentMessages.map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-        references: msg.references || [],
-        sources: msg.sources || [],
-      })),
-      model: this.model,
-      name: "Neuer Chat",
-      roleId: this.store.get("chat.roleId"),
-      selectedAssistantId: "",
-      selectedDataCollections: [],
-      selectedFiles: [],
-      selectedMode: "BASIC",
-      temperature: 0.2,
-    };
+  async processSendMessage(message) {
+    console.log("[App] Processing message:", message);
 
-    console.log("[ChatController] SENDING PAYLOAD:");
-    console.log("  Messages:", chatPayload.messages.length);
-    console.log(
-      "  Last msg:",
-      chatPayload.messages[chatPayload.messages.length - 1]?.content?.substring(
-        0,
-        100
-      )
-    );
+    // Add user message to UI immediately
+    this.addMessage(message, "user");
 
-    // NOW update the store (after building payload)
-    this.store.set("chat.messages", currentMessages);
-    this.store.set("chat.sessionId", sessionId);
+    // Show thinking indicator
+    const thinkingId = this.showTypingIndicator();
 
     try {
-      this.store.set("chat.isStreaming", true);
-
-      const domain =
-        this.store.get("auth.domain") || this.store.get("auth.activeDomain");
-      const chatUrl = `https://${domain}.506.ai/api/qr/chat`;
-
-      console.log(
-        "[ChatController] Calling API with",
-        chatPayload.messages.length,
-        "messages"
-      );
-
-      const response = await this.makeAuthenticatedRequest(chatUrl, {
-        method: "POST",
-        body: JSON.stringify(chatPayload),
-      });
-
-      const responseText = await response.text();
-      let assistantContent;
-      try {
-        const jsonResponse = JSON.parse(responseText);
-        assistantContent =
-          jsonResponse.content || jsonResponse.message || responseText;
-      } catch {
-        assistantContent = responseText;
+      // Get context if available
+      let context = null;
+      if (this.contextManager && this.contextManager.hasContext()) {
+        context = this.contextManager.getContextForMessage();
+        console.log("[App] Including context with message");
       }
 
-      // Add assistant response
-      const assistantMessage = {
-        id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        role: "assistant",
-        content: assistantContent,
-        timestamp: Date.now(),
-        references: [],
-        sources: [],
-      };
+      // Send to CompanyGPT API via ChatController
+      console.log("[App] Sending to chat controller...");
+      const response = await this.chatController.sendMessage(message, context);
 
-      // Get fresh messages and add response
-      const updatedMessages = this.store.get("chat.messages") || [];
-      updatedMessages.push(assistantMessage);
-      this.store.set("chat.messages", updatedMessages);
+      console.log("[App] Received response from chat controller");
 
-      return assistantMessage;
+      // Remove thinking indicator
+      this.removeTypingIndicator(thinkingId);
+
+      // Stream the response
+      const messageId = this.startStreamingMessage();
+      await this.streamText(messageId, response.content, 3);
     } catch (error) {
-      console.error("[ChatController] Send failed:", error);
-      throw error;
-    } finally {
-      this.store.set("chat.isStreaming", false);
+      console.error("[App] Failed to send message:", error);
+      this.removeTypingIndicator(thinkingId);
+      this.addMessage(`Fehler: ${error.message}`, "error");
     }
   }
 

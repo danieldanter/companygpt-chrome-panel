@@ -282,7 +282,12 @@ export class ChatController {
   /**
    * Send a message - Update to use store
    */
+  // Fixed sendMessage method for chat-controller.js
   async sendMessage(text, context = null) {
+    console.log("[ChatController] === SENDING MESSAGE ===");
+    console.log("[ChatController] Text:", text);
+    console.log("[ChatController] Context:", context);
+
     if (!this.isInitialized) {
       throw new Error("ChatController not initialized");
     }
@@ -291,7 +296,6 @@ export class ChatController {
     const intent = this.detectIntent(text, context);
     this.store.set("chat.lastUserIntent", intent);
     this.store.set("chat.currentIntent", intent);
-
     this.log("Detected intent:", intent);
 
     // Generate session ID if needed
@@ -326,17 +330,32 @@ export class ChatController {
     const userMessage = {
       id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       role: "user",
-      content: finalContent, // ← includes context if provided
+      content: finalContent,
       timestamp: Date.now(),
       references: [],
       sources: [],
-      _originalText: text, // for UI display
-      _context: context, // raw context for UI
+      _originalText: text,
+      _context: context,
     };
 
-    // ===== NEW: Add message via store =====
-    const messages = [...(this.store.get("chat.messages") || []), userMessage];
-    this.store.set("chat.messages", messages);
+    // === FIX: Get current messages and add new one ===
+    const currentMessages = this.store.get("chat.messages") || [];
+    const messagesWithNewOne = [...currentMessages, userMessage];
+
+    // === FIX: Update store IMMEDIATELY ===
+    this.store.set("chat.messages", messagesWithNewOne);
+
+    console.log(
+      "[ChatController] Messages in store after update:",
+      messagesWithNewOne.length
+    );
+    console.log(
+      "[ChatController] Last message content:",
+      messagesWithNewOne[messagesWithNewOne.length - 1]?.content?.substring(
+        0,
+        100
+      )
+    );
 
     try {
       // Set streaming state
@@ -348,12 +367,14 @@ export class ChatController {
         throw new Error("No domain configured");
       }
 
+      // === FIX: Build payload with the messages we just saved ===
       const chatPayload = {
         id: this.store.get("chat.sessionId"),
         folderId: this.store.get("chat.folderId"),
-        messages: this.store.get("chat.messages").map((msg) => ({
+        messages: messagesWithNewOne.map((msg) => ({
+          // Use messagesWithNewOne directly!
           role: msg.role,
-          content: msg.content, // includes context
+          content: msg.content,
           references: msg.references || [],
           sources: msg.sources || [],
         })),
@@ -367,7 +388,21 @@ export class ChatController {
         temperature: 0.2,
       };
 
-      this.log("Sending to API with state from store");
+      console.log("[ChatController] === PAYLOAD DEBUG ===");
+      console.log(
+        "[ChatController] Payload message count:",
+        chatPayload.messages.length
+      );
+      console.log("[ChatController] Payload messages:");
+      chatPayload.messages.forEach((msg, idx) => {
+        console.log(
+          `[ChatController]   Message ${idx}: role=${msg.role}, content_length=${msg.content.length}`
+        );
+        console.log(
+          `[ChatController]   Message ${idx} preview:`,
+          msg.content.substring(0, 100)
+        );
+      });
 
       // Make chat API request
       const chatUrl = `https://${domain}.506.ai/api/qr/chat`;
@@ -381,7 +416,7 @@ export class ChatController {
       const responseText = await response.text();
       this.log("Chat API response:", responseText);
 
-      // Parse response (it might be plain text or JSON)
+      // Parse response
       let assistantContent;
       try {
         const jsonResponse = JSON.parse(responseText);
@@ -401,34 +436,35 @@ export class ChatController {
         sources: [],
       };
 
-      // ===== NEW: Update store with assistant message =====
+      // === FIX: Get fresh messages from store and add assistant response ===
       const updatedMessages = [
         ...this.store.get("chat.messages"),
         assistantMessage,
       ];
       this.store.set("chat.messages", updatedMessages);
 
+      console.log(
+        "[ChatController] Final message count in store:",
+        updatedMessages.length
+      );
       this.log("Assistant response added to store");
 
       return assistantMessage;
     } catch (error) {
       console.error("[ChatController] Send message failed:", error);
 
-      // Remove the failed user message from store
-      const revertedMessages = this.store.get("chat.messages").slice(0, -1);
+      // Revert the failed user message
+      const revertedMessages = currentMessages; // Back to original
       this.store.set("chat.messages", revertedMessages);
 
-      // Add error to store
       this.store.actions.showError(
         "Failed to send message: " + (error?.message || String(error))
       );
-
       throw error;
     } finally {
       this.store.set("chat.isStreaming", false);
     }
   }
-
   /**
    * Build context string from page context (kept for debugging/analysis)
    */
