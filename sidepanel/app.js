@@ -2,6 +2,7 @@
 import { ChatController } from "./modules/chat-controller.js";
 import { MessageRenderer } from "./modules/message-renderer.js";
 import { ContextManager } from "./modules/context-manager.js";
+import { DatenspeicherSelector } from "./modules/datenspeicher-selector.js";
 
 class CompanyGPTChat {
   constructor() {
@@ -63,7 +64,7 @@ class CompanyGPTChat {
     console.log("[App] Initializing CompanyGPT Chat...");
 
     try {
-      // Initialize modules
+      // Initialize modules (but not chat controller yet)
       this.messageRenderer = new MessageRenderer();
 
       // Setup UI elements FIRST
@@ -75,16 +76,26 @@ class CompanyGPTChat {
       // Initialize ContextManager AFTER UI setup
       this.contextManager = new ContextManager(this);
 
-      // Check authentication
-      const isAuthenticated = await this.checkAuth();
-      this.store.set("auth.isAuthenticated", isAuthenticated);
+      // NEW: Initialize DatenspeicherSelector after ContextManager
+      try {
+        this.datenspeicherSelector = new DatenspeicherSelector(this.store);
+        console.log("[App] DatenspeicherSelector initialized");
+      } catch (dsErr) {
+        console.warn(
+          "[App] DatenspeicherSelector could not be initialized:",
+          dsErr
+        );
+      }
+
+      // Check authentication (this will show login overlay if needed)
+      this.isAuthenticated = await this.checkAuth();
 
       // Only initialize chat if authenticated
-      if (isAuthenticated) {
+      if (this.isAuthenticated) {
         await this.initializeChat();
       }
 
-      this.store.set("ui.initialized", true);
+      this.isInitialized = true;
       console.log("[App] Initialization complete");
     } catch (error) {
       console.error("[App] Initialization failed:", error);
@@ -241,13 +252,69 @@ class CompanyGPTChat {
       }
     });
 
-    // Context action buttons
+    // Context action buttons — UPDATED
+    // In your setupEventListeners method in app.js, replace the context action buttons listener with this:
+
+    // Context action buttons - UPDATED for split button
     document.addEventListener("click", (e) => {
+      // Handle split button for Datenspeicher
+      if (
+        e.target.closest('.context-action-btn[data-action="reply-with-data"]')
+      ) {
+        const button = e.target.closest(
+          '.context-action-btn[data-action="reply-with-data"]'
+        );
+        const clickedElement = e.target;
+
+        // Check if we have a selection
+        const hasSelection = button.classList.contains("has-selection");
+
+        if (!hasSelection) {
+          // No selection - open dropdown
+          if (this.datenspeicherSelector) {
+            this.datenspeicherSelector.open();
+          }
+          return;
+        }
+
+        // We have a selection - check what was clicked
+        if (clickedElement.closest(".button-dropdown")) {
+          // Clicked dropdown arrow - open selector
+          if (this.datenspeicherSelector) {
+            this.datenspeicherSelector.open();
+          }
+        } else if (
+          clickedElement.closest(".button-text") ||
+          clickedElement.closest("svg")
+        ) {
+          // Clicked main button area - execute action with selected Datenspeicher
+          const selectedFolder =
+            this.datenspeicherSelector?.getSelectedFolder();
+          if (selectedFolder) {
+            this.handleDatenspeicherReply({
+              folderId: selectedFolder.id,
+              folderName: selectedFolder.name,
+            });
+          }
+        }
+        return;
+      }
+
+      // Handle other context action buttons
       if (e.target.closest(".context-action-btn")) {
         const button = e.target.closest(".context-action-btn");
         const action = button.dataset.action;
-        this.handleContextAction(action);
+
+        // Skip reply-with-data as it's handled above
+        if (action !== "reply-with-data") {
+          this.handleContextAction(action);
+        }
       }
+    });
+
+    // Listen for Datenspeicher selection
+    window.addEventListener("datenspeicher-selected", (e) => {
+      this.handleDatenspeicherReply(e.detail);
     });
   }
 
@@ -1142,6 +1209,85 @@ class CompanyGPTChat {
       this.showError(`Fehler: ${error.message}`);
     } finally {
       if (button) button.classList.remove("loading");
+    }
+  }
+  // Add this method to your CompanyGPTChat class in app.js
+  // Place it after the handleContextAction method
+
+  async handleDatenspeicherReply(selection) {
+    console.log("[App] Datenspeicher selected:", selection);
+
+    // Check if we have context
+    const context = this.contextManager?.getContextForMessage();
+    if (!context) {
+      this.showError("Bitte lade zuerst den Seitenkontext");
+      return;
+    }
+
+    // Check if it's Gmail
+    const isGmail = !!context?.isGmail || context?.sourceType === "gmail";
+    if (!isGmail) {
+      this.showError("Diese Aktion ist nur für E-Mails verfügbar.");
+      return;
+    }
+
+    // Check if authenticated
+    if (!this.store.get("auth.isAuthenticated")) {
+      this.showError("Bitte melde dich erst an");
+      return;
+    }
+
+    // Ensure chat controller is initialized
+    if (!this.chatController || !this.chatController.isInitialized) {
+      console.log("[App] Chat controller not ready, initializing...");
+      try {
+        await this.initializeChat();
+      } catch (error) {
+        this.showError("Chat konnte nicht initialisiert werden");
+        return;
+      }
+    }
+
+    // Build query with Datenspeicher name
+    const query = `Bitte beantworte mir diese Email und nutze dabei relevante Informationen aus dem Datenspeicher "${selection.folderName}".`;
+
+    try {
+      // Clear input field
+      if (this.elements?.messageInput) {
+        this.elements.messageInput.value = "";
+      }
+
+      // Add user message to chat
+      this.addMessage(query, "user");
+
+      // Show thinking indicator
+      const thinkingId = this.showTypingIndicator();
+
+      console.log("[App] Sending with Datenspeicher:");
+      console.log("  Query:", query);
+      console.log("  Datenspeicher ID:", selection.folderId);
+      console.log("  Datenspeicher Name:", selection.folderName);
+      console.log("  Context:", context);
+
+      // Send to chat controller with context
+      // TODO: In the future, modify sendMessage to include selectedDataCollections: [selection.folderId]
+      const response = await this.chatController.sendMessage(query, context);
+
+      // Remove thinking indicator
+      this.removeTypingIndicator(thinkingId);
+
+      // Stream the response
+      const messageId = this.startStreamingMessage();
+      await this.streamText(messageId, response?.content || "", 3);
+    } catch (error) {
+      console.error("[App] Failed to process Datenspeicher reply:", error);
+      this.showError(`Fehler: ${error.message}`);
+
+      // Remove thinking indicator on error
+      const thinkingEl = document.querySelector(".thinking-indicator");
+      if (thinkingEl) {
+        thinkingEl.remove();
+      }
     }
   }
 }

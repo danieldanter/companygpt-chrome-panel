@@ -1,17 +1,54 @@
 /* sidepanel/styles.css - 506 Style with WHITE background */
 
+/* =========================
+   Design Tokens
+   ========================= */
 :root {
-  /* 506 Design Tokens - MUST BE WHITE */
-  --bg-primary: #ffffff;
-  --bg-secondary: #ffffff; /* WHITE - NOT GRAY! */
+  /* Core surfaces */
+  --white: #ffffff;
+  --bg-primary: var(--white);
+  --bg-secondary: var(--white); /* MUST BE WHITE */
+  --hover-bg: rgba(0, 0, 0, 0.05);
+
+  /* Text */
   --text-primary: #1f2937;
   --text-secondary: #5f6368;
   --text-muted: #6b7280;
+
+  /* Lines / Borders */
   --border: #eceae6;
+
+  /* Blues */
+  --blue-50: #f0f9ff;
   --blue-500: #0ea5e9;
   --blue-600: #0284c7;
   --blue-700: #0369a1;
-  --hover-bg: rgba(0, 0, 0, 0.05);
+
+  /* Feedback */
+  --danger: #ef4444;
+  --success: #22c55e;
+
+  /* Neutral tints */
+  --tint-gray-50: #f3f4f6;
+  --tint-gray-100: #f6f7f9;
+
+  /* Shadows */
+  --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.15);
+
+  /* Overlays */
+  --overlay-light: rgba(255, 255, 255, 0.95);
+  --overlay-dark: rgba(15, 17, 20, 0.95);
+
+  /* Radii */
+  --r-xxs: 3px;
+  --r-xs: 4px;
+  --r-s: 6px;
+  --r-m: 8px;
+  --r-l: 10px;
+  --r-xl: 12px;
+  --r-2xl: 14px;
+  --r-3xl: 20px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -22,9 +59,14 @@
     --text-secondary: #ababab;
     --text-muted: #6b6b6b;
     --border: #23262b;
+
+    --tint-gray-100: #101418;
   }
 }
 
+/* =========================
+   Reset / Base
+   ========================= */
 * {
   margin: 0;
   padding: 0;
@@ -49,7 +91,9 @@ body {
   overflow: hidden;
 }
 
-/* Header */
+/* =========================
+   Header
+   ========================= */
 .header {
   display: flex;
   justify-content: space-between;
@@ -60,26 +104,24 @@ body {
   min-height: 44px;
   background: var(--bg-primary);
 }
-
 .header-left {
   display: flex;
   align-items: center;
+}
+.header-right {
+  display: flex;
+  gap: 4px;
 }
 
 .preview-badge {
   font-size: 11px;
   color: var(--text-muted);
-  background: #f3f4f6;
+  background: var(--tint-gray-50);
   padding: 3px 8px;
-  border-radius: 4px;
+  border-radius: var(--r-xs);
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-}
-
-.header-right {
-  display: flex;
-  gap: 4px;
 }
 
 .icon-btn {
@@ -89,32 +131,31 @@ body {
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: var(--r-s);
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.15s ease;
 }
-
 .icon-btn:hover {
   background: var(--hover-bg);
   color: var(--text-primary);
 }
-
 .icon-btn.active {
   color: var(--blue-600);
   background: rgba(14, 165, 233, 0.08);
 }
 
-/* Chat container - MUST BE WHITE */
+/* =========================
+   Chat / Messages
+   ========================= */
 .chat-container {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 12px;
-  background: #ffffff; /* FORCE WHITE! */
+  background: var(--white); /* FORCE WHITE */
 }
-
 @media (prefers-color-scheme: dark) {
   .chat-container {
     background: #0f1114;
@@ -127,22 +168,19 @@ body {
   max-width: 100%;
 }
 
-/* 506 Message Bubbles */
 .message {
-  max-width: 85%; /* Percentage instead of 70ch for better responsive sizing */
+  max-width: 85%;
   padding: 12px 14px;
-  border-radius: 14px;
+  border-radius: var(--r-2xl);
   font-size: 14px;
   line-height: 1.5;
   word-wrap: break-word;
   animation: fadeIn 0.3s ease;
 }
-
 .message + .message {
   margin-top: 12px;
 }
 
-/* User messages - light blue tint */
 .message.user {
   align-self: flex-end;
   margin-left: auto;
@@ -154,43 +192,47 @@ body {
   border: 1px solid rgba(14, 165, 233, 0.2);
   color: var(--text-primary);
 }
-
-/* Assistant messages - light gray */
 .message.assistant {
   align-self: flex-start;
-  background: #f6f7f9;
-  border: 1px solid #eceae6;
+  background: var(--tint-gray-100);
+  border: 1px solid var(--border);
   color: var(--text-primary);
 }
-
 @media (prefers-color-scheme: dark) {
   .message.assistant {
-    background: #101418;
-    border-color: #23262b;
+    background: var(--tint-gray-100);
+    border-color: var(--border);
   }
-
   .message.user {
-    background: linear-gradient(
-      180deg,
-      rgba(14, 165, 233, 0.12),
-      rgba(14, 165, 233, 0.06)
-    );
     border-color: rgba(14, 165, 233, 0.15);
   }
 }
 
-/* Permission request styling */
+/* System messages */
+.message.system {
+  background: rgba(14, 165, 233, 0.05);
+  border-left: 3px solid var(--blue-500);
+  color: var(--text-secondary);
+  font-size: 13px;
+  padding: 8px 12px;
+  margin: 8px 0;
+}
+.system-icon {
+  margin-right: 4px;
+}
+
+/* =========================
+   Permission Request
+   ========================= */
 .permission-request {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
-
 .permission-text {
   font-size: 13px;
   color: var(--text-secondary);
 }
-
 .permission-buttons {
   display: flex;
   gap: 8px;
@@ -200,33 +242,32 @@ body {
 .btn-allow,
 .btn-deny {
   padding: 6px 12px;
-  border-radius: 6px;
+  border-radius: var(--r-s);
   border: 1px solid var(--border);
-  background: white;
+  background: var(--white);
   color: var(--text-primary);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.15s;
 }
-
 .btn-allow:hover {
-  background: #f0f9ff;
+  background: var(--blue-50);
   border-color: var(--blue-500);
 }
-
 .btn-deny:hover {
   background: #fef2f2;
-  border-color: #ef4444;
+  border-color: var(--danger);
 }
 
-/* Settings */
+/* =========================
+   Settings
+   ========================= */
 .settings-container {
   flex: 1;
   overflow-y: auto;
   padding: 16px;
-  background: #ffffff; /* WHITE! */
+  background: var(--white);
 }
-
 @media (prefers-color-scheme: dark) {
   .settings-container {
     background: #0f1114;
@@ -238,7 +279,6 @@ body {
   font-size: 16px;
   font-weight: 600;
 }
-
 .setting-item {
   display: flex;
   justify-content: space-between;
@@ -246,43 +286,35 @@ body {
   padding: 12px 0;
   border-bottom: 1px solid var(--border);
 }
-
 .setting-label {
   font-size: 14px;
   color: var(--text-primary);
 }
-
 .setting-value {
   font-size: 13px;
   color: var(--text-secondary);
 }
 
-/* Toggle switch */
+/* Toggle */
 .toggle {
   position: relative;
   display: inline-block;
   width: 40px;
   height: 22px;
 }
-
 .toggle input {
   opacity: 0;
   width: 0;
   height: 0;
 }
-
 .toggle-slider {
   position: absolute;
   cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   background: var(--border);
   border-radius: 22px;
   transition: 0.3s;
 }
-
 .toggle-slider:before {
   position: absolute;
   content: "";
@@ -290,20 +322,20 @@ body {
   width: 16px;
   left: 3px;
   bottom: 3px;
-  background: white;
+  background: var(--white);
   border-radius: 50%;
   transition: 0.3s;
 }
-
 .toggle input:checked + .toggle-slider {
   background: var(--blue-600);
 }
-
 .toggle input:checked + .toggle-slider:before {
   transform: translateX(18px);
 }
 
-/* Input area */
+/* =========================
+   Input Area
+   ========================= */
 .input-area {
   padding: 12px;
   border-top: 1px solid var(--border);
@@ -317,17 +349,17 @@ body {
   align-items: flex-end;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: var(--r-3xl);
   transition: border-color 0.2s;
+  padding-left: 4px; /* space for context btn */
 }
-
 .input-container:focus-within {
   border-color: var(--blue-500);
 }
 
 .message-input {
   flex: 1;
-  padding: 8px 40px 8px 14px;
+  padding: 8px 40px 8px 8px;
   border: none;
   background: transparent;
   resize: none;
@@ -338,11 +370,11 @@ body {
   max-height: 100px;
   line-height: 1.5;
 }
-
 .message-input::placeholder {
   color: var(--text-muted);
 }
 
+/* Send button (single source of truth) */
 .send-button {
   position: absolute;
   right: 6px;
@@ -351,7 +383,7 @@ body {
   height: 28px;
   border: none;
   background: var(--blue-600);
-  color: white;
+  color: var(--white);
   border-radius: 50%;
   cursor: pointer;
   display: flex;
@@ -359,35 +391,35 @@ body {
   justify-content: center;
   transition: all 0.2s;
 }
-
 .send-button:hover {
   background: var(--blue-500);
   transform: scale(1.05);
 }
-
 .send-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
+.send-button svg {
+  width: 16px;
+  height: 16px;
+}
 
-/* Login Overlay */
+/* =========================
+   Login Overlay
+   ========================= */
 .login-overlay {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(255, 255, 255, 0.95);
+  inset: 0;
+  background: var(--overlay-light);
   backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
 }
-
 @media (prefers-color-scheme: dark) {
   .login-overlay {
-    background: rgba(15, 17, 20, 0.95);
+    background: var(--overlay-dark);
   }
 }
 
@@ -397,19 +429,16 @@ body {
   max-width: 320px;
   animation: fadeIn 0.3s ease;
 }
-
 .login-icon {
   color: var(--blue-500);
   margin-bottom: 16px;
 }
-
 .login-card h2 {
   font-size: 20px;
   font-weight: 600;
   margin-bottom: 8px;
   color: var(--text-primary);
 }
-
 .login-card p {
   color: var(--text-secondary);
   margin-bottom: 24px;
@@ -420,28 +449,25 @@ body {
 .btn-check-auth {
   width: 100%;
   padding: 10px 20px;
-  border-radius: 8px;
+  border-radius: var(--r-m);
   border: none;
   background: var(--blue-600);
-  color: white;
+  color: var(--white);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
 }
-
 .btn-login:hover,
 .btn-check-auth:hover {
   background: var(--blue-500);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
 }
-
 .btn-check-auth {
   background: var(--border);
   color: var(--text-primary);
 }
-
 .btn-check-auth:hover {
   background: var(--blue-50);
 }
@@ -456,59 +482,53 @@ body {
   gap: 4px;
 }
 
-/* Blur content when login overlay is shown */
+/* Blur content when overlay is shown */
 .messages.blurred {
   filter: blur(3px);
   opacity: 0.5;
   pointer-events: none;
 }
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 
-/* Scrollbar */
+/* =========================
+   Scrollbars
+   ========================= */
 .chat-container::-webkit-scrollbar,
-.settings-container::-webkit-scrollbar {
+.settings-container::-webkit-scrollbar,
+.dropdown-list::-webkit-scrollbar {
   width: 6px;
 }
-
 .chat-container::-webkit-scrollbar-track,
-.settings-container::-webkit-scrollbar-track {
+.settings-container::-webkit-scrollbar-track,
+.dropdown-list::-webkit-scrollbar-track {
   background: transparent;
 }
-
 .chat-container::-webkit-scrollbar-thumb,
-.settings-container::-webkit-scrollbar-thumb {
+.settings-container::-webkit-scrollbar-thumb,
+.dropdown-list::-webkit-scrollbar-thumb {
   background: var(--border);
   border-radius: 3px;
 }
-
 .chat-container::-webkit-scrollbar-thumb:hover,
-.settings-container::-webkit-scrollbar-thumb:hover {
+.settings-container::-webkit-scrollbar-thumb:hover,
+.dropdown-list::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
 
+/* =========================
+   Domain / Input helpers
+   ========================= */
 .domain-status {
   margin: 12px 0;
   padding: 8px;
   background: rgba(14, 165, 233, 0.1);
-  border-radius: 6px;
+  border-radius: var(--r-s);
   font-size: 12px;
   color: var(--blue-600);
 }
-
 .domain-input-group {
   margin: 16px 0;
   text-align: left;
 }
-
 .domain-input-group label {
   display: block;
   margin-bottom: 6px;
@@ -520,15 +540,13 @@ body {
   display: flex;
   align-items: center;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--r-s);
   overflow: hidden;
   transition: border-color 0.2s;
 }
-
 .input-with-suffix:focus-within {
   border-color: var(--blue-500);
 }
-
 .input-with-suffix input {
   flex: 1;
   padding: 8px 12px;
@@ -538,7 +556,6 @@ body {
   font-size: 14px;
   color: var(--text-primary);
 }
-
 .input-with-suffix .suffix {
   padding: 8px 12px;
   background: var(--bg-secondary);
@@ -546,7 +563,6 @@ body {
   font-size: 14px;
   border-left: 1px solid var(--border);
 }
-
 .help-text {
   display: block;
   margin-top: 6px;
@@ -554,69 +570,57 @@ body {
   color: var(--text-muted);
 }
 
-/* Add these styles to your sidepanel/styles.css */
-
-/* Context Change Dialog */
+/* =========================
+   Context Change Dialog
+   ========================= */
 .context-change-dialog {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   z-index: 9999;
 }
-
 .dialog-overlay {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   background: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
   animation: fadeIn 0.2s ease;
 }
-
 .dialog-content {
   background: var(--bg-primary);
-  border-radius: 12px;
+  border-radius: var(--r-xl);
   padding: 24px;
   max-width: 400px;
   width: 90%;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-lg);
   animation: slideUp 0.3s ease;
 }
-
 .dialog-content h3 {
   margin: 0 0 16px 0;
   font-size: 18px;
   color: var(--text-primary);
 }
 
-.context-info {
+.dialog-content .context-info {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--r-m);
   padding: 12px;
   margin: 12px 0;
 }
-
 .new-context {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--border);
 }
-
-.context-info strong {
+.dialog-content .context-info strong {
   color: var(--text-primary);
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
-
-.context-info small {
+.dialog-content .context-info small {
   color: var(--text-muted);
   word-break: break-all;
 }
@@ -626,238 +630,171 @@ body {
   gap: 12px;
   margin-top: 20px;
 }
-
 .dialog-buttons button {
   flex: 1;
   padding: 10px 16px;
-  border-radius: 8px;
+  border-radius: var(--r-m);
   border: none;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
 }
-
 .btn-primary {
   background: var(--blue-600);
-  color: white;
+  color: var(--white);
 }
-
 .btn-primary:hover {
   background: var(--blue-500);
   transform: translateY(-1px);
 }
-
 .btn-secondary {
   background: var(--bg-secondary);
   color: var(--text-primary);
   border: 1px solid var(--border);
 }
-
 .btn-secondary:hover {
   background: var(--hover-bg);
 }
 
-/* System messages */
-.message.system {
-  background: rgba(14, 165, 233, 0.05);
-  border-left: 3px solid var(--blue-500);
-  color: var(--text-secondary);
-  font-size: 13px;
-  padding: 8px 12px;
-  margin: 8px 0;
-}
-
-.system-icon {
-  margin-right: 4px;
-}
-
-/* Animations */
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Add these styles to your sidepanel/styles.css */
-
-/* Context Change Request (inline notification) */
+/* =========================
+   Context Change Request (inline)
+   ========================= */
 .context-change-request {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
-
 .context-title {
   font-weight: 600;
   font-size: 14px;
   color: var(--text-primary);
 }
-
 .context-text {
   font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.5;
 }
-
 .context-text strong {
   color: var(--text-primary);
   display: block;
   margin: 4px 0;
 }
-
 .context-url {
   color: var(--text-muted);
   font-size: 12px;
   word-break: break-all;
 }
-
-.context-info {
+.inline-context-info {
   font-size: 13px;
   color: var(--text-secondary);
   padding: 8px 0;
-}
+} /* renamed to avoid clashes */
 
 .context-buttons {
   display: flex;
   gap: 8px;
   margin-top: 4px;
 }
-
 .context-buttons button {
   flex: 1;
   padding: 8px 14px;
-  border-radius: 6px;
+  border-radius: var(--r-s);
   border: 1px solid var(--border);
-  background: white;
+  background: var(--white);
   color: var(--text-primary);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
 }
-
 .btn-new-chat {
   background: var(--blue-600);
-  color: white;
+  color: var(--white);
   border-color: var(--blue-600);
 }
-
 .btn-new-chat:hover {
   background: var(--blue-500);
   border-color: var(--blue-500);
   transform: translateY(-1px);
 }
-
 .btn-continue {
-  background: white;
+  background: var(--white);
   color: var(--text-primary);
 }
-
 .btn-continue:hover {
-  background: #f0f9ff;
+  background: var(--blue-50);
   border-color: var(--blue-500);
 }
 
-/* Context change divider */
 .context-change-info {
   margin: 12px 0;
   position: relative;
 }
-
-.context-divider {
+.context-divider,
+.context-notification .context-divider {
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
-  padding: 0 12px;
 }
-
 .context-divider::before,
-.context-divider::after {
+.context-divider::after,
+.context-notification .context-divider::before,
+.context-notification .context-divider::after {
   content: "";
   flex: 1;
   height: 1px;
   background: var(--border);
 }
-
-.context-divider span {
+.context-divider span,
+.context-notification .context-divider span {
   padding: 0 12px;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-muted);
   background: var(--bg-primary);
   white-space: nowrap;
 }
 
-/* Dark mode adjustments */
-@media (prefers-color-scheme: dark) {
-  .context-buttons button {
-    background: var(--bg-secondary);
-    border-color: var(--border);
-  }
-
-  .btn-new-chat {
-    background: var(--blue-600);
-    border-color: var(--blue-600);
-  }
-
-  .btn-continue:hover {
-    background: rgba(14, 165, 233, 0.1);
-  }
-
-  .context-divider span {
-    background: var(--bg-primary);
-  }
-}
-
-/* Add these styles to your sidepanel/styles.css */
-
-/* Flat context notification (no double bubble) */
+/* =========================
+   Context Notification (flat)
+   ========================= */
 .context-notification {
   margin: 12px;
   padding: 14px;
-  border-radius: 14px;
-  border: 1px dashed rgba(107, 114, 128, 0.3); /* Gray dashed border */
-  background: #f9fafb; /* Light gray background */
+  border-radius: var(--r-2xl);
+  border: 1px dashed rgba(107, 114, 128, 0.3);
+  background: #f9fafb;
 }
-
 @media (prefers-color-scheme: dark) {
   .context-notification {
     background: rgba(255, 255, 255, 0.03);
     border-color: rgba(156, 163, 175, 0.3);
   }
 }
-
 .context-notification .permission-title {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 6px;
 }
-
 .context-notification .small {
   font-size: 12px;
   color: var(--text-muted);
   margin-bottom: 12px;
 }
-
 .context-notification .permission-buttons {
   display: flex;
   gap: 8px;
   margin-top: 12px;
 }
 
-/* Tab buttons stay the same */
-.context-notification .tab {
+.context-notification .tab,
+.tab {
   padding: 8px 12px;
-  border-radius: 12px;
+  border-radius: var(--r-2xl);
   border: 1px solid var(--border);
-  background: white;
+  background: var(--white);
   color: var(--text-secondary);
   font-weight: 600;
   font-size: 13px;
@@ -865,86 +802,49 @@ body {
   transition: all 0.15s ease;
   flex: 1;
 }
-
-@media (prefers-color-scheme: dark) {
-  .context-notification .tab {
-    background: var(--bg-secondary);
-  }
-}
-
-.context-notification .tab:hover {
+.context-notification .tab:hover,
+.tab:hover {
   background: rgba(14, 165, 233, 0.08);
   border-color: rgba(14, 165, 233, 0.35);
   color: var(--blue-600);
 }
-
-/* Context divider stays minimal */
-.context-divider {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 12px;
-  position: relative;
-}
-
-.context-divider::before,
-.context-divider::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--border);
-}
-
-.context-divider span {
-  padding: 0 12px;
-  font-size: 11px;
-  color: var(--text-muted);
-  background: var(--bg-primary);
-}
-
 @media (prefers-color-scheme: dark) {
+  .context-notification .tab,
   .tab {
-    background: rgba(255, 255, 255, 0.02);
-    border-color: var(--border);
+    background: var(--bg-secondary);
   }
-
   .tab:hover {
     background: rgba(56, 189, 248, 0.12);
     border-color: rgba(56, 189, 248, 0.45);
   }
 }
 
-/* Add this CSS to the end of your sidepanel/styles.css file */
-
-/* Context Bar */
-/* Context Bar - Compact version */
+/* =========================
+   Context Bar (compact)
+   ========================= */
 .context-bar {
   display: flex;
   flex-direction: column;
+  gap: 6px;
   padding: 8px 12px;
   background: rgba(14, 165, 233, 0.08);
   border: 1px solid rgba(14, 165, 233, 0.2);
-  border-radius: 10px;
+  border-radius: var(--r-l);
   margin-bottom: 12px;
   animation: slideDown 0.3s ease;
-  gap: 6px; /* Smaller gap */
 }
-
-/* First row - Context info */
-.context-info {
+.context-bar .context-info {
   display: flex;
   align-items: center;
   gap: 8px;
   min-height: 20px;
 }
-
 .context-icon {
   font-size: 14px;
   flex-shrink: 0;
 }
-
 .context-text {
-  color: var(--text-primary);
+  color: var(--text-secondary);
   font-weight: 500;
   font-size: 13px;
   flex: 1;
@@ -953,7 +853,6 @@ body {
   white-space: nowrap;
 }
 
-/* Close button */
 .context-close-btn {
   width: 18px;
   height: 18px;
@@ -961,7 +860,7 @@ body {
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--r-xs);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -972,21 +871,16 @@ body {
   padding: 0;
   opacity: 0.6;
 }
-
 .context-close-btn:hover {
   background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  color: var(--danger);
   opacity: 1;
 }
 
-/* Second row - Compact action buttons */
 .context-actions-row {
   display: flex;
   gap: 8px;
-  /* No border-top - removed separator line */
 }
-
-/* Compact action buttons */
 .context-action-btn {
   flex: 1;
   display: flex;
@@ -996,7 +890,7 @@ body {
   padding: 5px 8px;
   background: transparent;
   border: 1px solid rgba(14, 165, 233, 0.2);
-  border-radius: 6px;
+  border-radius: var(--r-s);
   cursor: pointer;
   transition: all 0.15s ease;
   font-size: 12px;
@@ -1004,129 +898,98 @@ body {
   color: var(--text-primary);
   min-width: 0;
 }
-
 .context-action-btn:hover {
   background: rgba(255, 255, 255, 0.8);
   border-color: var(--blue-500);
   color: var(--blue-600);
 }
-
 .context-action-btn:active {
   transform: scale(0.98);
 }
-
-.context-action-btn svg {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-  opacity: 0.7;
+.context-action-btn.loading {
+  opacity: 0.6;
+  pointer-events: none;
+  position: relative;
 }
-
-.context-action-btn:hover svg {
-  opacity: 1;
-}
-
-.context-action-btn span {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Make sure the load context button is visible */
-.context-load-btn {
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
-  margin-right: 4px;
-  flex-shrink: 0;
-}
-
-.context-load-btn:hover {
-  background: var(--hover-bg);
-  color: var(--text-primary);
-}
-
-.context-load-btn svg {
-  width: 16px;
-  height: 16px;
-}
-
-/* Send button styling */
-.send-button {
+.context-action-btn.loading::after {
+  content: "...";
   position: absolute;
-  right: 6px;
-  bottom: 6px;
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: var(--blue-600);
-  color: white;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
+  right: 4px;
+  animation: dots 1s steps(3, end) infinite;
 }
 
-.send-button:hover {
-  background: var(--blue-500);
-  transform: scale(1.05);
-}
-
-.send-button svg {
-  width: 16px;
-  height: 16px;
-}
-
-/* Dark mode adjustments */
 @media (prefers-color-scheme: dark) {
   .context-bar {
     background: rgba(14, 165, 233, 0.12);
     border-color: rgba(14, 165, 233, 0.25);
   }
-
   .context-action-btn {
     background: transparent;
     border-color: rgba(14, 165, 233, 0.2);
     color: var(--text-secondary);
   }
-
   .context-action-btn:hover {
     background: rgba(14, 165, 233, 0.15);
     border-color: var(--blue-500);
-    color: var(--blue-400);
+    color: #60a5fa;
   }
 }
 
-/* Responsive adjustments for very small screens */
-@media (max-width: 350px) {
-  .context-action-btn span {
-    font-size: 11px;
-  }
-
-  .context-action-btn {
-    padding: 4px 6px;
-  }
+/* Split button variant (Datenspeicher) */
+.context-action-btn.has-selection {
+  padding: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
 }
-.context-text {
-  color: var(--text-secondary);
+.context-action-btn.has-selection svg {
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+.context-action-btn.has-selection .button-text {
+  flex: 1;
+  padding: 5px 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-weight: 500;
 }
+.context-action-btn.has-selection .button-divider {
+  width: 1px;
+  height: 16px;
+  background: rgba(14, 165, 233, 0.3);
+  margin: 0 2px;
+}
+.context-action-btn.has-selection .button-dropdown {
+  padding: 5px 8px;
+  cursor: pointer;
+  font-size: 10px;
+  opacity: 0.7;
+  transition: all 0.15s ease;
+  border-left: 1px solid transparent;
+}
+.context-action-btn.has-selection .button-dropdown:hover {
+  background: rgba(14, 165, 233, 0.1);
+  opacity: 1;
+}
+.context-action-btn.has-selection .button-text:hover {
+  background: rgba(14, 165, 233, 0.05);
+}
+@media (prefers-color-scheme: dark) {
+  .context-action-btn.has-selection .button-divider {
+    background: rgba(14, 165, 233, 0.4);
+  }
+  .context-action-btn.has-selection .button-dropdown:hover {
+    background: rgba(14, 165, 233, 0.2);
+  }
+}
 
+/* Context buttons (generic icons) */
 .context-actions {
   display: flex;
   gap: 4px;
 }
-
 .context-btn {
   width: 24px;
   height: 24px;
@@ -1134,13 +997,12 @@ body {
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--r-xs);
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.15s ease;
 }
-
 .context-btn:hover {
   background: rgba(14, 165, 233, 0.1);
   color: var(--blue-600);
@@ -1154,180 +1016,91 @@ body {
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: var(--r-s);
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.15s ease;
   margin-right: 4px;
-  flex-shrink: 0; /* Prevent button from shrinking */
+  flex-shrink: 0;
 }
-
 .context-load-btn:hover {
   background: var(--hover-bg);
   color: var(--text-primary);
 }
-
 .context-load-btn.loading {
   color: var(--blue-600);
   animation: spin 1s linear infinite;
 }
-
 .context-load-btn.loaded {
   color: var(--blue-600);
   background: rgba(14, 165, 233, 0.1);
 }
-
 .context-load-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
-
-/* Update input container to accommodate new button */
-.input-container {
-  position: relative;
-  display: flex;
-  align-items: flex-end;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  transition: border-color 0.2s;
-  padding-left: 4px; /* Space for context button */
-}
-
-.message-input {
-  flex: 1;
-  padding: 8px 40px 8px 8px; /* Reduced left padding since button has margin */
-  border: none;
-  background: transparent;
-  resize: none;
-  outline: none;
-  font-family: inherit;
-  font-size: 14px;
-  color: var(--text-primary);
-  max-height: 100px;
-  line-height: 1.5;
-}
-
-/* Animations */
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* Context button states */
 .context-load-btn[data-state="default"] svg {
   opacity: 0.7;
 }
-
-.context-load-btn[data-state="loading"] svg {
-  opacity: 1;
-}
-
+.context-load-btn[data-state="loading"] svg,
 .context-load-btn[data-state="loaded"] svg {
   opacity: 1;
 }
-
-/* Context available pulse effect */
 .context-load-btn.context-available {
   animation: contextPulse 2s ease-in-out;
 }
-
-@keyframes contextPulse {
-  0%,
-  100% {
-    background: transparent;
-    color: var(--text-muted);
-  }
-  50% {
-    background: rgba(14, 165, 233, 0.1);
-    color: var(--blue-600);
-  }
+.context-load-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
-/* Trash button specific styling */
+/* Trash button */
 #btn-clear-chat:hover {
-  color: #ef4444; /* Red color on hover */
+  color: var(--danger);
   background: rgba(239, 68, 68, 0.1);
 }
-
 #btn-clear-chat:hover svg {
   transform: scale(1.1);
   transition: transform 0.15s ease;
 }
 
-/* Context button pulse animation */
-.context-load-btn.context-available {
-  animation: contextPulse 2s ease-in-out;
-}
-
-@keyframes contextPulse {
-  0%,
-  100% {
-    background: transparent;
-    color: var(--text-muted);
-  }
-  50% {
-    background: rgba(14, 165, 233, 0.1);
-    color: var(--blue-600);
-  }
-}
-
-/* Beautiful Markdown Styling for Chat Messages */
-
-/* Headers */
+/* =========================
+   Markdown Styling (Assistant)
+   ========================= */
 .markdown-h1 {
   font-size: 1.5em;
   font-weight: 700;
   color: var(--text-primary);
-  margin: 16px 0 12px 0;
+  margin: 16px 0 12px;
   border-bottom: 2px solid var(--blue-500);
   padding-bottom: 8px;
 }
-
 .markdown-h2 {
   font-size: 1.3em;
   font-weight: 600;
   color: var(--text-primary);
-  margin: 14px 0 10px 0;
+  margin: 14px 0 10px;
   border-bottom: 1px solid var(--border);
   padding-bottom: 6px;
 }
-
 .markdown-h3 {
   font-size: 1.1em;
   font-weight: 600;
   color: var(--text-primary);
-  margin: 12px 0 8px 0;
+  margin: 12px 0 8px;
 }
 
-/* Paragraphs */
 .markdown-p {
   margin: 8px 0;
   line-height: 1.6;
   color: var(--text-primary);
 }
 
-/* Code blocks */
 .code-block {
   background: #f8f9fa;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--r-m);
   padding: 16px;
   margin: 12px 0;
   overflow-x: auto;
@@ -1336,7 +1109,6 @@ body {
   font-size: 13px;
   line-height: 1.5;
 }
-
 @media (prefers-color-scheme: dark) {
   .code-block {
     background: #1a1b1e;
@@ -1344,7 +1116,6 @@ body {
     color: #e1e4e8;
   }
 }
-
 .code-block code {
   background: none;
   padding: 0;
@@ -1352,18 +1123,16 @@ body {
   font-size: inherit;
 }
 
-/* Inline code */
 .inline-code {
   background: rgba(14, 165, 233, 0.1);
   color: var(--blue-700);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--r-xs);
   font-family: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas,
     "Courier New", monospace;
   font-size: 0.9em;
   border: 1px solid rgba(14, 165, 233, 0.2);
 }
-
 @media (prefers-color-scheme: dark) {
   .inline-code {
     background: rgba(14, 165, 233, 0.15);
@@ -1372,66 +1141,53 @@ body {
   }
 }
 
-/* Lists */
-.markdown-ul {
-  margin: 12px 0;
-  padding-left: 24px;
-}
-
+.markdown-ul,
 .markdown-ol {
   margin: 12px 0;
   padding-left: 24px;
 }
-
 .markdown-li {
   margin: 4px 0;
   line-height: 1.5;
   color: var(--text-primary);
 }
-
 .markdown-ul .markdown-li {
   list-style-type: disc;
 }
-
 .markdown-ol .markdown-li {
   list-style-type: decimal;
 }
 
-/* Links */
 .message.assistant a {
   color: var(--blue-600);
   text-decoration: underline;
   text-decoration-color: rgba(14, 165, 233, 0.4);
   transition: all 0.15s ease;
 }
-
 .message.assistant a:hover {
   color: var(--blue-500);
   text-decoration-color: var(--blue-500);
   background: rgba(14, 165, 233, 0.1);
   padding: 2px 4px;
-  border-radius: 4px;
+  border-radius: var(--r-xs);
   margin: -2px -4px;
 }
 
-/* Blockquotes */
 .markdown-quote {
   border-left: 4px solid var(--blue-500);
   background: rgba(14, 165, 233, 0.05);
   padding: 12px 16px;
   margin: 12px 0;
-  border-radius: 0 8px 8px 0;
+  border-radius: 0 var(--r-m) var(--r-m) 0;
   font-style: italic;
   color: var(--text-secondary);
 }
-
 @media (prefers-color-scheme: dark) {
   .markdown-quote {
     background: rgba(14, 165, 233, 0.1);
   }
 }
 
-/* Horizontal rules */
 .markdown-hr {
   border: none;
   height: 2px;
@@ -1445,17 +1201,14 @@ body {
   border-radius: 1px;
 }
 
-/* Text formatting */
 strong {
   font-weight: 600;
   color: var(--text-primary);
 }
-
 em {
   font-style: italic;
   color: var(--text-primary);
 }
-
 del {
   text-decoration: line-through;
   opacity: 0.7;
@@ -1465,60 +1218,44 @@ del {
 .message.assistant .markdown-p:first-child {
   margin-top: 0;
 }
-
 .message.assistant .markdown-p:last-child {
   margin-bottom: 0;
 }
-
-/* Ensure proper spacing between elements */
 .message.assistant > *:first-child {
   margin-top: 0;
 }
-
 .message.assistant > *:last-child {
   margin-bottom: 0;
 }
 
-/* Enhanced list styling */
+/* Enhanced lists, nested and tasks */
 .markdown-li.bullet {
   list-style-type: disc;
 }
-
 .markdown-li.numbered {
   list-style-type: decimal;
 }
-
-.markdown-ul.nested {
-  margin-top: 8px;
-  margin-bottom: 8px;
-  padding-left: 20px;
-}
-
+.markdown-ul.nested,
 .markdown-ol.nested {
-  margin-top: 8px;
-  margin-bottom: 8px;
+  margin: 8px 0;
   padding-left: 20px;
 }
 
-/* Task lists */
 .task-item {
   list-style: none;
   padding-left: 0;
 }
-
 .task-item input[type="checkbox"] {
   margin-right: 8px;
   margin-left: -20px;
 }
 
-/* Highlight text */
 mark {
   background: #fff3cd;
   color: #856404;
   padding: 2px 4px;
-  border-radius: 3px;
+  border-radius: var(--r-xxs);
 }
-
 @media (prefers-color-scheme: dark) {
   mark {
     background: #664d03;
@@ -1526,7 +1263,6 @@ mark {
   }
 }
 
-/* Better spacing for complex content */
 .message.assistant ul + p,
 .message.assistant ol + p,
 .message.assistant p + ul,
@@ -1534,42 +1270,31 @@ mark {
   margin-top: 12px;
 }
 
-/* Enhanced thinking indicator */
+/* Thinking Indicator */
 .thinking-indicator {
   display: flex;
   align-items: center;
   padding: 12px 14px;
   margin-top: 12px;
-  background: #f6f7f9;
-  border: 1px solid #eceae6;
-  border-radius: 14px;
+  background: var(--tint-gray-100);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2xl);
   max-width: 85%;
 }
-
-@media (prefers-color-scheme: dark) {
-  .thinking-indicator {
-    background: #101418;
-    border-color: #23262b;
-  }
-}
-
 .thinking-content {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-
 .thinking-text {
   color: var(--text-secondary);
   font-size: 14px;
   font-style: italic;
 }
-
 .thinking-dots {
   display: flex;
   gap: 4px;
 }
-
 .thinking-dot {
   width: 6px;
   height: 6px;
@@ -1577,7 +1302,6 @@ mark {
   background: var(--text-muted);
   animation: thinkingPulse 1.4s infinite ease-in-out;
 }
-
 .thinking-dot:nth-child(1) {
   animation-delay: 0s;
 }
@@ -1587,59 +1311,30 @@ mark {
 .thinking-dot:nth-child(3) {
   animation-delay: 0.4s;
 }
-
-@keyframes thinkingPulse {
-  0%,
-  60%,
-  100% {
-    opacity: 0.3;
-    transform: scale(1);
-  }
-  30% {
-    opacity: 1;
-    transform: scale(1.2);
-  }
-}
-
-/* Streaming cursor */
 .streaming-cursor {
   animation: blink 1s infinite;
   color: var(--blue-500);
   font-weight: bold;
 }
 
-@keyframes blink {
-  0%,
-  50% {
-    opacity: 1;
-  }
-  51%,
-  100% {
-    opacity: 0;
-  }
-}
-
-/* Add to sidepanel/styles.css - Action Buttons for Messages */
-
-/* Container for message with action buttons */
+/* =========================
+   Message Action Buttons
+   ========================= */
 .message-with-actions {
   position: relative;
 }
-
-/* Action buttons container */
 .action-buttons {
   display: flex;
   gap: 8px;
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--border);
-  flex-wrap: wrap; /* Allow wrapping on small screens */
+  flex-wrap: wrap;
+  animation: fadeInUp 0.3s ease;
 }
-
-/* Individual action button */
 .action-btn {
   padding: 6px 12px;
-  border-radius: 6px;
+  border-radius: var(--r-s);
   border: 1px solid var(--border);
   background: var(--bg-secondary);
   color: var(--text-primary);
@@ -1652,127 +1347,271 @@ mark {
   gap: 4px;
   white-space: nowrap;
 }
-
-/* Hover state */
 .action-btn:hover {
   background: rgba(14, 165, 233, 0.08);
   border-color: var(--blue-500);
   transform: translateY(-1px);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
-
-/* Active/clicked state */
 .action-btn:active {
   transform: translateY(0);
   box-shadow: none;
 }
-
-/* Success state (after action completes) */
 .action-btn.success {
   background: rgba(34, 197, 94, 0.1);
   border-color: rgba(34, 197, 94, 0.5);
-  color: rgb(34, 197, 94);
-  pointer-events: none; /* Disable while showing success */
+  color: var(--success);
+  pointer-events: none;
 }
-
-/* Error state */
 .action-btn.error {
   background: rgba(239, 68, 68, 0.1);
   border-color: rgba(239, 68, 68, 0.5);
-  color: rgb(239, 68, 68);
+  color: var(--danger);
 }
-
-/* Loading state */
 .action-btn.loading {
   opacity: 0.6;
   pointer-events: none;
 }
-
 .action-btn.loading::after {
   content: "...";
   animation: dots 1s steps(3, end) infinite;
 }
 
-@keyframes dots {
-  0%,
-  20% {
-    content: ".";
-  }
-  40% {
-    content: "..";
-  }
-  60%,
-  100% {
-    content: "...";
-  }
+/* =========================
+   Datenspeicher Dropdown
+   ========================= */
+.datenspeicher-dropdown {
+  position: fixed;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-md);
+  z-index: 1000;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideUp 0.2s ease;
+}
+.dropdown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+.dropdown-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+.dropdown-header-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.dropdown-refresh,
+.dropdown-close {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--r-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+}
+.dropdown-refresh:hover {
+  background: rgba(14, 165, 233, 0.1);
+  color: var(--blue-600);
+}
+.dropdown-refresh:active {
+  animation: rotate 0.5s ease;
+}
+.dropdown-close:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
 }
 
-/* Dark mode adjustments */
+.dropdown-search {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.dropdown-search-input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-s);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.dropdown-search-input:focus {
+  border-color: var(--blue-500);
+}
+.dropdown-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.dropdown-list {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 200px;
+  min-height: 100px;
+}
+.dropdown-loading,
+.dropdown-empty,
+.dropdown-error {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.dropdown-error {
+  color: var(--danger);
+}
+
+.dropdown-item {
+  border-bottom: 1px solid var(--border);
+  transition: background-color 0.15s ease;
+  cursor: pointer;
+  padding: 10px 12px;
+}
+.dropdown-item:last-child {
+  border-bottom: none;
+}
+.dropdown-item:hover {
+  background: var(--hover-bg);
+}
+.dropdown-item.selected {
+  background: rgba(14, 165, 233, 0.08);
+}
+.dropdown-item-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.folder-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folder-badge {
+  background: rgba(14, 165, 233, 0.1);
+  color: var(--blue-600);
+  padding: 2px 6px;
+  border-radius: var(--r-xs);
+  font-size: 11px;
+  font-weight: 500;
+}
+.folder-selected {
+  color: var(--blue-600);
+  font-weight: 600;
+  margin-left: 4px;
+}
+
 @media (prefers-color-scheme: dark) {
-  .action-btn {
-    background: rgba(255, 255, 255, 0.05);
-    border-color: var(--border);
+  .datenspeicher-dropdown {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   }
-
-  .action-btn:hover {
+  .dropdown-item.selected {
     background: rgba(14, 165, 233, 0.15);
-    border-color: rgba(14, 165, 233, 0.5);
   }
-
-  .action-btn.success {
-    background: rgba(34, 197, 94, 0.15);
+  .folder-badge {
+    background: rgba(14, 165, 233, 0.2);
+    color: #60a5fa;
   }
 }
 
-/* Specific button styles */
-.copy-btn {
-  /* Optional: specific styling for copy button */
+/* =========================
+   Misc
+   ========================= */
+.context-notification .permission-buttons .tab {
+  flex: 1;
 }
 
-.gmail-reply-btn {
-  /* Optional: specific styling for Gmail reply button */
-}
-
-.gmail-compose-btn {
-  /* Optional: specific styling for Gmail compose button */
-}
-
-/* Small animation for when buttons appear */
-.action-buttons {
-  animation: fadeInUp 0.3s ease;
-}
-
-@keyframes fadeInUp {
+/* Animations (de-duplicated) */
+@keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(5px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
   }
 }
-
-/* Add loading state for action buttons */
-.context-action-btn.loading {
-  opacity: 0.6;
-  pointer-events: none;
-  position: relative;
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
-
-.context-action-btn.loading::after {
-  content: "...";
-  position: absolute;
-  right: 4px;
-  animation: dots 1s steps(3, end) infinite;
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
-
-/* Active/pressed state */
-.context-action-btn:active {
-  transform: scale(0.95);
-  background: rgba(14, 165, 233, 0.1);
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
-
+@keyframes thinkingPulse {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+@keyframes blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  51%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
 @keyframes dots {
   0%,
   20% {
@@ -1784,5 +1623,26 @@ mark {
   60%,
   100% {
     content: "...";
+  }
+}
+@keyframes contextPulse {
+  0%,
+  100% {
+    background: transparent;
+    color: var(--text-muted);
+  }
+  50% {
+    background: rgba(14, 165, 233, 0.1);
+    color: var(--blue-600);
+  }
+}
+
+/* Responsive */
+@media (max-width: 350px) {
+  .context-action-btn span {
+    font-size: 11px;
+  }
+  .context-action-btn {
+    padding: 4px 6px;
   }
 }
