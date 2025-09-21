@@ -1385,13 +1385,15 @@ mark {
   background: var(--bg-primary);
   border: 1px solid var(--border);
   border-radius: var(--r-xl);
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15),
+    /* Shadow on top since it's a dropup */ 0 0 0 1px rgba(0, 0, 0, 0.05); /* Subtle border shadow for definition */
   z-index: 1000;
   display: none;
   flex-direction: column;
   overflow: hidden;
   animation: slideUp 0.2s ease;
 }
+
 .dropdown-header {
   display: flex;
   justify-content: space-between;
@@ -1525,7 +1527,8 @@ mark {
 
 @media (prefers-color-scheme: dark) {
   .datenspeicher-dropdown {
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5),
+      0 0 0 1px rgba(255, 255, 255, 0.1);
   }
   .dropdown-item.selected {
     background: rgba(14, 165, 233, 0.15);
@@ -1644,5 +1647,298 @@ mark {
   }
   .context-action-btn {
     padding: 4px 6px;
+  }
+}
+/* new */
+
+/* Split button for Datenspeicher */
+.context-action-btn[data-action="reply-with-data"] {
+  padding: 0;
+  overflow: visible;
+  position: relative;
+}
+
+.split-button-container {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  width: 100%;
+}
+
+.button-main {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.button-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.button-divider {
+  width: 1px;
+  height: 16px;
+  background: rgba(14, 165, 233, 0.2);
+  margin: 0;
+  transition: opacity 0.15s ease;
+  opacity: 0;
+}
+
+.button-dropdown {
+  padding: 5px 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease;
+}
+
+/* When no selection - hide divider, entire button is clickable */
+.context-action-btn[data-action="reply-with-data"]:not(.has-selection)
+  .button-divider {
+  display: none;
+}
+
+.context-action-btn[data-action="reply-with-data"]:not(.has-selection)
+  .button-dropdown {
+  padding: 5px 8px;
+}
+
+/* When has selection - show divider and split functionality */
+.context-action-btn[data-action="reply-with-data"].has-selection
+  .button-divider {
+  opacity: 1;
+  display: block;
+}
+
+/* Hover states for split button */
+.context-action-btn[data-action="reply-with-data"]:not(.has-selection):hover {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: var(--blue-500);
+  color: var(--blue-600);
+}
+
+.context-action-btn[data-action="reply-with-data"].has-selection
+  .button-main:hover {
+  background: rgba(14, 165, 233, 0.1);
+}
+
+.context-action-btn[data-action="reply-with-data"].has-selection
+  .button-dropdown:hover {
+  background: rgba(14, 165, 233, 0.15);
+}
+
+/* Active states */
+.context-action-btn[data-action="reply-with-data"].has-selection
+  .button-main:active {
+  background: rgba(14, 165, 233, 0.2);
+}
+
+.context-action-btn[data-action="reply-with-data"].has-selection
+  .button-dropdown:active {
+  background: rgba(14, 165, 233, 0.25);
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+  .button-divider {
+    background: rgba(14, 165, 233, 0.3);
+  }
+
+  .context-action-btn[data-action="reply-with-data"].has-selection
+    .button-main:hover {
+    background: rgba(14, 165, 233, 0.2);
+  }
+
+  .context-action-btn[data-action="reply-with-data"].has-selection
+    .button-dropdown:hover {
+    background: rgba(14, 165, 233, 0.25);
+  }
+}
+
+/* Analysis Messages */
+.analysis-message {
+  background: rgba(14, 165, 233, 0.05);
+  border: 1px solid rgba(14, 165, 233, 0.15);
+  border-radius: var(--r-l);
+  padding: 10px 12px;
+  margin: 8px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  animation: fadeIn 0.3s ease;
+}
+
+.analysis-message.running {
+  background: rgba(14, 165, 233, 0.08);
+}
+
+.analysis-message.complete {
+  opacity: 0.9;
+}
+
+.analysis-message.error {
+  background: rgba(239, 68, 68, 0.05);
+  border-color: rgba(239, 68, 68, 0.15);
+}
+
+.analysis-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.analysis-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.analysis-icon {
+  flex-shrink: 0;
+  color: var(--blue-600);
+}
+
+.analysis-text {
+  flex: 1;
+  font-weight: 500;
+}
+
+.step-indicator {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  padding: 2px 6px;
+  border-radius: var(--r-xs);
+}
+
+.abort-button {
+  padding: 4px 8px;
+  font-size: 11px;
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: var(--danger);
+  border-radius: var(--r-xs);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.abort-button:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: var(--danger);
+}
+
+/* Query Bubble */
+.query-bubble {
+  background: var(--bg-primary);
+  border: 1px solid var(--blue-500);
+  border-radius: var(--r-m);
+  padding: 8px 12px;
+  margin-top: 4px;
+}
+
+.query-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.query-text {
+  color: var(--text-primary);
+  font-weight: 500;
+  font-size: 13px;
+}
+
+/* RAG Results Collapsible */
+.rag-results {
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-m);
+  overflow: hidden;
+}
+
+.rag-results-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease;
+}
+
+.rag-results-header:hover {
+  background: var(--hover-bg);
+}
+
+.rag-arrow {
+  font-size: 10px;
+  transition: transform 0.2s ease;
+}
+
+.rag-results.expanded .rag-arrow {
+  transform: rotate(90deg);
+}
+
+.rag-results-content {
+  padding: 12px;
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.rag-results-text {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.rag-result-item {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.rag-result-item:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.rag-result-item strong {
+  color: var(--text-primary);
+  display: block;
+  margin-bottom: 4px;
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+  .analysis-message {
+    background: rgba(14, 165, 233, 0.08);
+    border-color: rgba(14, 165, 233, 0.2);
+  }
+
+  .query-bubble {
+    background: var(--bg-secondary);
+  }
+
+  .rag-results-header {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .rag-results-header:hover {
+    background: rgba(255, 255, 255, 0.05);
   }
 }

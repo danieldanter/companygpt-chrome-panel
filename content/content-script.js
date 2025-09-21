@@ -2,17 +2,35 @@
 // Prevent multiple injections
 // Improved guard that allows reinitialization when needed
 (function () {
-  // Check if already loaded AND still functional
+  // If an instance exists and is still functional, refresh its listener and bail
   if (window.__companyGPTExtractorLoaded && window.__companyGPTExtractor) {
     console.log(
       "[CompanyGPT Extension] Content script already loaded and functional"
     );
-
-    // Refresh the message listener for the existing instance
     if (window.__companyGPTExtractor.setupMessageListener) {
       window.__companyGPTExtractor.setupMessageListener();
     }
     return;
+  }
+
+  // Add context invalidation detection up front
+  if (typeof chrome !== "undefined" && chrome.runtime?.id) {
+    // Cleanup on page unload (navigations, tab close, etc.)
+    window.addEventListener("beforeunload", () => {
+      if (window.__companyGPTExtractor?.cleanup) {
+        window.__companyGPTExtractor.cleanup();
+      }
+    });
+
+    // Also listen for extension port disconnects (reload/disable)
+    chrome.runtime.onConnect?.addListener((port) => {
+      port.onDisconnect.addListener(() => {
+        console.log("[ContentExtractor] Extension disconnected");
+        if (window.__companyGPTExtractor?.cleanup) {
+          window.__companyGPTExtractor.cleanup();
+        }
+      });
+    });
   }
 
   console.log("[CompanyGPT Extension] Content script initializing...");
@@ -25,6 +43,13 @@
       this.initialized = false;
       this.extractionCount = 0;
       this.lastExtraction = null;
+
+      // Handles for cleanup
+      this.gmailObserver = null;
+      this.docsChangeTimeout = null;
+      this.docsCheckInterval = null;
+      this.sharepointObserver = null;
+      this.spaUrlObserver = null;
 
       // Site-specific configurations
       this.siteConfig = this.detectSiteConfig();
@@ -115,62 +140,105 @@
     }
 
     // content/content-script.js - Update the setupMessageListener method
-
     setupMessageListener() {
+      // Check if chrome runtime is still valid
+      if (!chrome?.runtime?.id) {
+        console.warn("[ContentExtractor] Extension context lost");
+        return;
+      }
+
+      // To avoid duplicate listeners on re-init, we can use a one-time flag
+      if (this._listenerAttached) return;
+      this._listenerAttached = true;
+
       chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // Add debug log for ALL messages
         console.log("[ContentExtractor] Received message:", request.action);
 
-        // Handle Gmail-specific actions
-        if (request.action === "INSERT_EMAIL_REPLY") {
-          console.log(
-            "[ContentExtractor] INSERT_EMAIL_REPLY received with data:",
-            request.data
-          );
-
-          try {
-            this.insertEmailReply(request.data);
-            sendResponse({ success: true });
-          } catch (error) {
-            console.error(
-              "[ContentExtractor] Error in insertEmailReply:",
-              error
+        // Wrap in try-catch for context invalidation
+        try {
+          // Check if extension context is still valid before responding
+          if (!chrome.runtime?.id) {
+            console.warn(
+              "[ContentExtractor] Extension context invalidated during message"
             );
-            sendResponse({ success: false, error: error.message });
+            return false;
           }
-          return true;
-        }
 
-        // Your existing message handling...
-        const handleAsync = async () => {
-          try {
+          // Handle Gmail-specific actions
+          if (request.action === "INSERT_EMAIL_REPLY") {
             console.log(
-              `[ContentExtractor] Processing action: ${request.action}`
+              "[ContentExtractor] INSERT_EMAIL_REPLY received with data:",
+              request.data
             );
 
-            switch (request.action) {
-              case "ping":
-                return { status: "ready", type: this.siteConfig.type };
-              case "EXTRACT_CONTENT":
-                return await this.extractContent(request.options);
-              // ... rest of your cases
+            try {
+              this.insertEmailReply(request.data);
+              sendResponse({ success: true });
+            } catch (error) {
+              console.error(
+                "[ContentExtractor] Error in insertEmailReply:",
+                error
+              );
+              sendResponse({ success: false, error: error.message });
             }
-          } catch (error) {
-            console.error("[ContentExtractor] Error:", error);
-            return { error: error.message };
+            return true;
           }
-        };
 
-        handleAsync().then(sendResponse);
-        return true;
+          // Your existing message handling...
+          const handleAsync = async () => {
+            try {
+              // Check again before processing
+              if (!chrome.runtime?.id) {
+                throw new Error("Extension context invalidated");
+              }
+
+              console.log(
+                `[ContentExtractor] Processing action: ${request.action}`
+              );
+
+              switch (request.action) {
+                case "ping":
+                  return { status: "ready", type: this.siteConfig.type };
+                case "EXTRACT_CONTENT":
+                  return await this.extractContent(request.options);
+                // ... add future actions here
+                default:
+                  return { ok: true, note: "Unhandled action" };
+              }
+            } catch (error) {
+              console.error("[ContentExtractor] Error:", error);
+              return { error: error.message };
+            }
+          };
+
+          handleAsync()
+            .then((result) => {
+              // Final check before sending response
+              if (chrome.runtime?.id) {
+                sendResponse(result);
+              }
+            })
+            .catch((error) => {
+              console.error("[ContentExtractor] Async handler error:", error);
+              if (chrome.runtime?.id) {
+                sendResponse({ error: error.message });
+              }
+            });
+
+          return true; // Keep channel open for async response
+        } catch (error) {
+          console.error("[ContentExtractor] Message handler error:", error);
+          // Don't try to send response if context is invalid
+          if (chrome.runtime?.id) {
+            sendResponse({ error: "Extension context error" });
+          }
+          return false;
+        }
       });
     }
 
-    // Add this new method to ContentExtractor class
-    // content/content-script.js - Update the insertEmailReply method
-
     // content/content-script.js - Fix the insertEmailReply method
-
     insertEmailReply(emailData) {
       console.log("[ContentExtractor] Starting insertion process...");
       console.log("[ContentExtractor] Email data received:", emailData);
@@ -207,7 +275,7 @@
             );
 
             // Clean up the email content
-            let cleanedBody = emailData.body;
+            let cleanedBody = emailData.body ?? "";
 
             // Remove Subject line if it exists
             cleanedBody = cleanedBody.replace(/^Subject:.*?\n+/i, "");
@@ -283,9 +351,10 @@
         );
       }
 
-      // Always return success (bad practice but that's what we have)
+      // Always return success (kept for compatibility)
       return { success: true };
     }
+
     async extractContent(options = {}) {
       this.extractionCount++;
       const startTime = performance.now();
@@ -388,7 +457,7 @@
             method: "dom-partial",
             needsExport: true,
             docId,
-            exportUrl: `/document/d/${docId}/export?format=txt`,
+            exportUrl: docId ? `/document/d/${docId}/export?format=txt` : null,
           },
         };
       }
@@ -647,22 +716,25 @@
         if (hasNewMessages) {
           console.log("[ContentExtractor] New Gmail messages detected");
           // Could notify extension that new content is available
-          chrome.runtime
-            .sendMessage({
-              type: "CONTENT_UPDATED",
-              siteType: "gmail",
-              url: this.url,
-            })
-            .catch(() => {}); // Ignore errors if extension context not available
+          try {
+            chrome.runtime
+              .sendMessage({
+                type: "CONTENT_UPDATED",
+                siteType: "gmail",
+                url: this.url,
+              })
+              .catch(() => {});
+          } catch (_) {}
         }
       });
 
-      const container = document.querySelector('.AO, [role="main"]');
+      const container = document.querySelector(".AO, [role='main']");
       if (container) {
         observer.observe(container, {
           childList: true,
           subtree: true,
         });
+        this.gmailObserver = observer;
         console.log("[ContentExtractor] Gmail observer initialized");
       }
     }
@@ -680,19 +752,21 @@
           // Debounced notification
           clearTimeout(this.docsChangeTimeout);
           this.docsChangeTimeout = setTimeout(() => {
-            chrome.runtime
-              .sendMessage({
-                type: "CONTENT_UPDATED",
-                siteType: "google-docs",
-                url: this.url,
-              })
-              .catch(() => {});
+            try {
+              chrome.runtime
+                .sendMessage({
+                  type: "CONTENT_UPDATED",
+                  siteType: "google-docs",
+                  url: this.url,
+                })
+                .catch(() => {});
+            } catch (_) {}
           }, 1000);
         }
       };
 
       // Check periodically (Google Docs doesn't trigger mutations reliably)
-      setInterval(checkForChanges, 5000);
+      this.docsCheckInterval = setInterval(checkForChanges, 5000);
     }
 
     initSharePointObserver() {
@@ -718,7 +792,55 @@
           childList: true,
           subtree: true,
         });
+        this.sharepointObserver = observer;
       }
+    }
+
+    // Add this method to ContentExtractor class
+    cleanup() {
+      console.log("[ContentExtractor] Cleaning up...");
+
+      // Clear observers
+      if (this.gmailObserver) {
+        try {
+          this.gmailObserver.disconnect();
+        } catch (_) {}
+        this.gmailObserver = null;
+      }
+
+      if (this.sharepointObserver) {
+        try {
+          this.sharepointObserver.disconnect();
+        } catch (_) {}
+        this.sharepointObserver = null;
+      }
+
+      // Clear timeouts
+      if (this.docsChangeTimeout) {
+        try {
+          clearTimeout(this.docsChangeTimeout);
+        } catch (_) {}
+        this.docsChangeTimeout = null;
+      }
+
+      // Clear intervals
+      if (this.docsCheckInterval) {
+        try {
+          clearInterval(this.docsCheckInterval);
+        } catch (_) {}
+        this.docsCheckInterval = null;
+      }
+
+      // Disconnect SPA URL observer
+      if (this.spaUrlObserver) {
+        try {
+          this.spaUrlObserver.disconnect();
+        } catch (_) {}
+        this.spaUrlObserver = null;
+      }
+
+      this.initialized = false;
+      console.log("[ContentExtractor] Cleanup complete");
     }
   }
 
@@ -735,25 +857,38 @@
 
     // Handle SPA navigation
     let lastUrl = location.href;
-    new MutationObserver(() => {
+    const spaObserver = new MutationObserver(() => {
       const url = location.href;
       if (url !== lastUrl) {
         lastUrl = url;
         console.log("[ContentExtractor] URL changed, reinitializing...");
+
+        // Cleanup existing instance before replacing
+        if (contentExtractor?.cleanup) {
+          contentExtractor.cleanup();
+        }
         contentExtractor = new ContentExtractor();
+        window.__companyGPTExtractor = contentExtractor;
       }
-    }).observe(document, { subtree: true, childList: true });
+    });
+
+    spaObserver.observe(document, { subtree: true, childList: true });
+
+    // keep a ref for cleanup
+    contentExtractor.spaUrlObserver = spaObserver;
   }
 
   // Initialize based on document state
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initializeExtractor);
+    document.addEventListener("DOMContentLoaded", initializeExtractor, {
+      once: true,
+    });
   } else {
     initializeExtractor();
   }
 
-  // Store the instance globally for reuse
-  window.__companyGPTExtractor = new ContentExtractor();
+  // Store the instance globally for reuse (ensure we point to the same instance)
+  window.__companyGPTExtractor = contentExtractor || new ContentExtractor();
   window.__companyGPTExtractorLoaded = true;
 
   console.log("[CompanyGPT Extension] Content script loaded");

@@ -312,18 +312,19 @@ export class DatenspeicherSelector {
   /**
    * Select a folder (single selection)
    */
+  // Update the selectFolder method
   selectFolder(folderId, folderName) {
     console.log("[DatenspeicherSelector] Selected folder:", folderName);
 
     // Update selection
     this.selectedFolder = { id: folderId, name: folderName };
 
-    // Store in state (will be persisted automatically)
+    // Store in state
     this.store.set("datenspeicher.lastSelected", folderId);
     this.store.set("datenspeicher.lastSelectedName", folderName);
 
-    // Update button text
-    this.updateButtonText(folderName);
+    // Update button to show selection
+    this.updateButtonWithSelection(folderName);
 
     // Close dropdown
     this.close();
@@ -338,6 +339,115 @@ export class DatenspeicherSelector {
         },
       })
     );
+  }
+  // New method to update button with selection
+  updateButtonWithSelection(folderName) {
+    const button = document.querySelector(
+      '.context-action-btn[data-action="reply-with-data"]'
+    );
+    if (!button) return;
+
+    // Add has-selection class
+    button.classList.add("has-selection");
+
+    // Update the label text
+    const labelSpan = button.querySelector(".button-label");
+    if (labelSpan) {
+      // Truncate long names
+      const maxLength = 20;
+      const truncatedName =
+        folderName.length > maxLength
+          ? folderName.substring(0, maxLength) + "..."
+          : folderName;
+
+      labelSpan.textContent = `Mit "${truncatedName}" antworten`;
+      labelSpan.title = `Mit "${folderName}" antworten`; // Full name in tooltip
+    }
+  }
+
+  // Add method to clear selection from button
+  clearButtonSelection() {
+    const button = document.querySelector(
+      '.context-action-btn[data-action="reply-with-data"]'
+    );
+    if (!button) return;
+
+    // Remove has-selection class
+    button.classList.remove("has-selection");
+
+    // Reset label text
+    const labelSpan = button.querySelector(".button-label");
+    if (labelSpan) {
+      labelSpan.textContent = "Mit Datenspeicher antworten";
+      labelSpan.removeAttribute("title");
+    }
+  }
+  // New method to update button with selection
+  updateButtonWithSelection(folderName) {
+    const button = document.querySelector(
+      '.context-action-btn[data-action="reply-with-data"]'
+    );
+    if (!button) return;
+
+    // Add has-selection class
+    button.classList.add("has-selection");
+
+    // Update the label text
+    const labelSpan = button.querySelector(".button-label");
+    if (labelSpan) {
+      // Truncate long names
+      const maxLength = 20;
+      const truncatedName =
+        folderName.length > maxLength
+          ? folderName.substring(0, maxLength) + "..."
+          : folderName;
+
+      labelSpan.textContent = `Mit "${truncatedName}" antworten`;
+      labelSpan.title = `Mit "${folderName}" antworten`; // Full name in tooltip
+    }
+  }
+
+  // Add method to clear selection from button
+  clearButtonSelection() {
+    const button = document.querySelector(
+      '.context-action-btn[data-action="reply-with-data"]'
+    );
+    if (!button) return;
+
+    // Remove has-selection class
+    button.classList.remove("has-selection");
+
+    // Reset label text
+    const labelSpan = button.querySelector(".button-label");
+    if (labelSpan) {
+      labelSpan.textContent = "Mit Datenspeicher antworten";
+      labelSpan.removeAttribute("title");
+    }
+  }
+
+  // Update clearSelection method
+  clearSelection() {
+    this.selectedFolder = null;
+    this.store.set("datenspeicher.lastSelected", null);
+    this.store.set("datenspeicher.lastSelectedName", null);
+
+    // Reset button appearance
+    this.clearButtonSelection();
+  }
+
+  // Update restoreLastSelection method
+  restoreLastSelection() {
+    const lastSelectedId = this.store.get("datenspeicher.lastSelected");
+    const lastSelectedName = this.store.get("datenspeicher.lastSelectedName");
+
+    if (lastSelectedId && lastSelectedName) {
+      this.selectedFolder = { id: lastSelectedId, name: lastSelectedName };
+      this.updateButtonWithSelection(lastSelectedName);
+      console.log(
+        "[DatenspeicherSelector] Restored last selection:",
+        lastSelectedName
+      );
+    }
   }
 
   /**
@@ -400,18 +510,39 @@ export class DatenspeicherSelector {
       );
     }
 
-    // Position dropdown above the button (dropup style)
+    // Position dropdown above the button (dropup style) with better edge handling
     const button = document.querySelector(
       '.context-action-btn[data-action="reply-with-data"]'
     );
     if (button && this.dropdownElement) {
       const rect = button.getBoundingClientRect();
+      const dropdownWidth = 280;
+      const viewportWidth = window.innerWidth;
+
+      // Calculate left position - ensure it doesn't go off-screen
+      let leftPos = rect.left;
+
+      // If dropdown would go off right edge, align it to the right edge of button
+      if (leftPos + dropdownWidth > viewportWidth) {
+        leftPos = rect.right - dropdownWidth;
+      }
+
+      // If still off-screen (button is very far right), align to viewport edge
+      if (leftPos + dropdownWidth > viewportWidth) {
+        leftPos = viewportWidth - dropdownWidth - 10; // 10px margin from edge
+      }
+
+      // Ensure it doesn't go off left edge either
+      if (leftPos < 10) {
+        leftPos = 10;
+      }
+
       this.dropdownElement.style.position = "fixed";
       this.dropdownElement.style.bottom = `${
         window.innerHeight - rect.top + 5
       }px`;
-      this.dropdownElement.style.left = `${rect.left}px`;
-      this.dropdownElement.style.width = "280px";
+      this.dropdownElement.style.left = `${leftPos}px`;
+      this.dropdownElement.style.width = `${dropdownWidth}px`;
       this.dropdownElement.style.maxHeight = "350px";
     }
 
@@ -427,7 +558,6 @@ export class DatenspeicherSelector {
       document.getElementById("datenspeicher-search")?.focus();
     }, 100);
   }
-
   /**
    * Close the dropdown
    */

@@ -256,59 +256,55 @@ class CompanyGPTChat {
     // In your setupEventListeners method in app.js, replace the context action buttons listener with this:
 
     // Context action buttons - UPDATED for split button
+    // Context action buttons - Updated for proper split button
     document.addEventListener("click", (e) => {
-      // Handle split button for Datenspeicher
-      if (
-        e.target.closest('.context-action-btn[data-action="reply-with-data"]')
-      ) {
-        const button = e.target.closest(
-          '.context-action-btn[data-action="reply-with-data"]'
-        );
+      const button = e.target.closest(
+        '.context-action-btn[data-action="reply-with-data"]'
+      );
+
+      if (button) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const hasSelection = button.classList.contains("has-selection");
         const clickedElement = e.target;
 
-        // Check if we have a selection
-        const hasSelection = button.classList.contains("has-selection");
+        // Determine which part was clicked
+        const isDropdownClick = clickedElement.closest(".button-dropdown");
+        const isMainClick = clickedElement.closest(".button-main");
 
         if (!hasSelection) {
-          // No selection - open dropdown
+          // No selection - any click opens dropdown
           if (this.datenspeicherSelector) {
             this.datenspeicherSelector.open();
           }
-          return;
-        }
-
-        // We have a selection - check what was clicked
-        if (clickedElement.closest(".button-dropdown")) {
-          // Clicked dropdown arrow - open selector
-          if (this.datenspeicherSelector) {
-            this.datenspeicherSelector.open();
-          }
-        } else if (
-          clickedElement.closest(".button-text") ||
-          clickedElement.closest("svg")
-        ) {
-          // Clicked main button area - execute action with selected Datenspeicher
-          const selectedFolder =
-            this.datenspeicherSelector?.getSelectedFolder();
-          if (selectedFolder) {
-            this.handleDatenspeicherReply({
-              folderId: selectedFolder.id,
-              folderName: selectedFolder.name,
-            });
+        } else {
+          // Has selection - split functionality
+          if (isDropdownClick) {
+            // Clicked dropdown arrow - open selector
+            if (this.datenspeicherSelector) {
+              this.datenspeicherSelector.open();
+            }
+          } else if (isMainClick) {
+            // Clicked main area - execute action with selected Datenspeicher
+            const selectedFolder =
+              this.datenspeicherSelector?.getSelectedFolder();
+            if (selectedFolder) {
+              this.handleDatenspeicherReply({
+                folderId: selectedFolder.id,
+                folderName: selectedFolder.name,
+              });
+            }
           }
         }
         return;
       }
 
       // Handle other context action buttons
-      if (e.target.closest(".context-action-btn")) {
-        const button = e.target.closest(".context-action-btn");
-        const action = button.dataset.action;
-
-        // Skip reply-with-data as it's handled above
-        if (action !== "reply-with-data") {
-          this.handleContextAction(action);
-        }
+      const otherButton = e.target.closest(".context-action-btn");
+      if (otherButton && otherButton.dataset.action !== "reply-with-data") {
+        const action = otherButton.dataset.action;
+        this.handleContextAction(action);
       }
     });
 
@@ -1215,7 +1211,10 @@ class CompanyGPTChat {
   // Place it after the handleContextAction method
 
   async handleDatenspeicherReply(selection) {
-    console.log("[App] Datenspeicher selected:", selection);
+    console.log(
+      "[App] Datenspeicher selected for multi-step reply:",
+      selection
+    );
 
     // Check if we have context
     const context = this.contextManager?.getContextForMessage();
@@ -1248,7 +1247,7 @@ class CompanyGPTChat {
       }
     }
 
-    // Build query with Datenspeicher name
+    // Build initial query message
     const query = `Bitte beantworte mir diese Email und nutze dabei relevante Informationen aus dem Datenspeicher "${selection.folderName}".`;
 
     try {
@@ -1260,33 +1259,49 @@ class CompanyGPTChat {
       // Add user message to chat
       this.addMessage(query, "user");
 
-      // Show thinking indicator
-      const thinkingId = this.showTypingIndicator();
+      console.log("[App] Starting multi-step Datenspeicher process");
 
-      console.log("[App] Sending with Datenspeicher:");
-      console.log("  Query:", query);
-      console.log("  Datenspeicher ID:", selection.folderId);
-      console.log("  Datenspeicher Name:", selection.folderName);
-      console.log("  Context:", context);
+      // Use the new multi-step method
+      const response = await this.chatController.sendDatanspeicherReply(
+        query,
+        context,
+        selection.folderId,
+        selection.folderName
+      );
 
-      // Send to chat controller with context
-      // TODO: In the future, modify sendMessage to include selectedDataCollections: [selection.folderId]
-      const response = await this.chatController.sendMessage(query, context);
+      // Only show response if not aborted
+      if (response) {
+        // Add the final assistant message
+        const messageId = this.startStreamingMessage();
+        await this.streamText(messageId, response.content, 3);
+      }
 
-      // Remove thinking indicator
-      this.removeTypingIndicator(thinkingId);
-
-      // Stream the response
-      const messageId = this.startStreamingMessage();
-      await this.streamText(messageId, response?.content || "", 3);
+      console.log("[App] Multi-step Datenspeicher reply completed");
     } catch (error) {
       console.error("[App] Failed to process Datenspeicher reply:", error);
       this.showError(`Fehler: ${error.message}`);
+    }
+  }
 
-      // Remove thinking indicator on error
-      const thinkingEl = document.querySelector(".thinking-indicator");
-      if (thinkingEl) {
-        thinkingEl.remove();
+  // Add method to toggle RAG results
+  toggleRAGResults() {
+    const isExpanded = this.store.get("chat.ragResultsExpanded");
+    this.store.set("chat.ragResultsExpanded", !isExpanded);
+
+    // Update UI
+    const ragResults = document.querySelector(".rag-results");
+    const ragContent = document.querySelector(".rag-results-content");
+    const ragArrow = document.querySelector(".rag-arrow");
+
+    if (ragResults && ragContent && ragArrow) {
+      if (!isExpanded) {
+        ragResults.classList.add("expanded");
+        ragContent.style.display = "block";
+        ragArrow.textContent = "▼";
+      } else {
+        ragResults.classList.remove("expanded");
+        ragContent.style.display = "none";
+        ragArrow.textContent = "▶";
       }
     }
   }

@@ -41,6 +41,19 @@
         maxLength: 950000,
       },
       lastUserIntent: null,
+      // ADD THE NEW PROPERTIES HERE ↓↓↓
+      multiStepProcess: {
+        active: false,
+        type: null, // 'email-datenspeicher-reply'
+        currentStep: 0,
+        totalSteps: 3,
+        canAbort: true,
+        abortController: null,
+        steps: [],
+      },
+      extractedQuery: null,
+      ragResults: null,
+      ragResultsExpanded: false,
     },
 
     // Context
