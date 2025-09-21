@@ -1932,3 +1932,117 @@ mark {
     background: var(--bg-secondary);
   }
 }
+
+/* Email Action Buttons - Responsive Layout */
+.action-buttons.email-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.action-buttons-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.action-buttons-row.primary {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+}
+
+/* Action button with icon and text */
+.action-btn {
+  padding: 6px 10px;
+  border-radius: var(--r-s);
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  flex: 0 1 auto;
+}
+
+.action-btn svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.action-btn:hover {
+  background: rgba(14, 165, 233, 0.08);
+  border-color: var(--blue-500);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.action-btn:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+/* Specific button styles */
+.copy-btn.success,
+.action-btn.success {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.5);
+  color: var(--success);
+}
+
+.formeller-btn:hover {
+  background: rgba(99, 102, 241, 0.1);
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+.informeller-btn:hover {
+  background: rgba(251, 146, 60, 0.1);
+  border-color: rgba(251, 146, 60, 0.5);
+}
+
+.kuerzer-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.laenger-btn:hover {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.5);
+}
+
+/* Responsive behavior */
+@media (max-width: 400px) {
+  .action-buttons-row {
+    flex-direction: column;
+  }
+
+  .action-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+  .action-buttons-row.primary {
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .action-btn {
+    background: var(--bg-secondary);
+    border-color: var(--border);
+  }
+
+  .action-btn:hover {
+    background: rgba(14, 165, 233, 0.15);
+  }
+}

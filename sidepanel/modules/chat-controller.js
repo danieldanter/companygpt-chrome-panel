@@ -423,7 +423,16 @@ export class ChatController {
     }
 
     // Detect and store intent
-    const intent = this.detectIntent(text, context);
+    let intent = this.detectIntent(text, context);
+
+    // IMPORTANT: If this is a variation request, keep the email-reply intent
+    if (context?.isVariationRequest) {
+      intent = "email-reply"; // Force email-reply intent for variations
+      console.log(
+        "[ChatController] Variation request detected, forcing email-reply intent"
+      );
+    }
+
     this.store.set("chat.lastUserIntent", intent);
     this.store.set("chat.currentIntent", intent);
     this.log("Detected intent:", intent);

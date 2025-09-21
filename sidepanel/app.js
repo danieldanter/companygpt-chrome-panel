@@ -722,7 +722,7 @@ class CompanyGPTChat {
       ) {
         this.elements.messagesContainer.innerHTML = `
           <div class="message assistant welcome-shown">
-            ✅ Chat bereit! Du kannst jetzt Fragen stellen.
+            ✨ Chat bereit! Du kannst jetzt Fragen stellen.
           </div>
         `;
       }
@@ -802,7 +802,11 @@ class CompanyGPTChat {
     }
 
     this.elements.messagesContainer?.appendChild(messageEl);
-    this.scrollToBottom();
+
+    // Ensure scroll after adding message
+    requestAnimationFrame(() => {
+      this.scrollToBottom();
+    });
   }
 
   async handleGmailReply(content) {
@@ -944,6 +948,8 @@ class CompanyGPTChat {
         /\n/g,
         "<br>"
       )}<span class="streaming-cursor">▊</span>`;
+
+      // Scroll during streaming
       this.scrollToBottom();
 
       await new Promise((resolve) => setTimeout(resolve, speed));
@@ -956,67 +962,256 @@ class CompanyGPTChat {
       ? this.chatController.getLastUserIntent()
       : null;
 
+    // Get the last user message to check if it's a variation request
+    const messages = this.store.get("chat.messages") || [];
+    const lastUserMessage = messages.filter((m) => m.role === "user").pop();
+    const isVariationRequest =
+      lastUserMessage?.content?.includes("Bitte schreibe die E-Mail") ||
+      lastUserMessage?.content?.includes("Bitte kürze");
+
     console.log("[App] Stream complete, intent:", lastUserIntent);
+    console.log("[App] Is variation request:", isVariationRequest);
 
-    if (lastUserIntent && lastUserIntent !== "general") {
-      const alreadyWrapped = messageEl.querySelector(".message-with-actions");
-      if (!alreadyWrapped) {
-        const buttonsDiv = document.createElement("div");
-        buttonsDiv.className = "action-buttons";
-
-        const copyBtn = document.createElement("button");
-        copyBtn.className = "action-btn copy-btn";
-        copyBtn.innerHTML = "📋 Kopieren";
-        copyBtn.onclick = async () => {
-          try {
-            await navigator.clipboard.writeText(content);
-            copyBtn.innerHTML = "✅ Kopiert!";
-            copyBtn.classList.add("success");
-          } catch (err) {
-            console.error("[App] Clipboard copy failed:", err);
-            copyBtn.innerHTML = "⚠️ Fehler";
-            copyBtn.classList.add("error");
-          } finally {
-            setTimeout(() => {
-              copyBtn.innerHTML = "📋 Kopieren";
-              copyBtn.classList.remove("success", "error");
-            }, 2000);
-          }
-        };
-        buttonsDiv.appendChild(copyBtn);
-
-        if (lastUserIntent === "email-reply") {
-          const replyBtn = document.createElement("button");
-          replyBtn.className = "action-btn gmail-reply-btn";
-          replyBtn.innerHTML = "↩️ Als Antwort einfügen";
-          replyBtn.onclick = () => this.handleGmailReply(content);
-          buttonsDiv.appendChild(replyBtn);
-        } else if (lastUserIntent === "email-new") {
-          const composeBtn = document.createElement("button");
-          composeBtn.className = "action-btn gmail-compose-btn";
-          composeBtn.innerHTML = "✉️ Neue E-Mail";
-          composeBtn.onclick = () => this.handleGmailCompose(content);
-          buttonsDiv.appendChild(composeBtn);
-        }
-
-        const currentContent = messageEl.innerHTML;
-        messageEl.innerHTML = "";
-
-        const containerDiv = document.createElement("div");
-        containerDiv.className = "message-with-actions";
-
-        const contentDiv = document.createElement("div");
-        contentDiv.className = "message-content";
-        contentDiv.innerHTML = currentContent;
-
-        containerDiv.appendChild(contentDiv);
-        containerDiv.appendChild(buttonsDiv);
-
-        messageEl.appendChild(containerDiv);
-      }
+    // Show action buttons for email replies OR variation requests
+    if (
+      (lastUserIntent &&
+        (lastUserIntent === "email-reply" || lastUserIntent === "email-new")) ||
+      isVariationRequest
+    ) {
+      this.addEmailActionButtons(messageEl, content);
     }
 
-    this.scrollToBottom();
+    // IMPORTANT: Multiple scroll attempts to ensure it works
+    this.scrollToBottom(); // Immediate
+
+    // Wait for buttons to be added to DOM
+    requestAnimationFrame(() => {
+      this.scrollToBottom();
+
+      // Final fallback after everything should be rendered
+      setTimeout(() => {
+        this.scrollToBottom();
+      }, 250);
+    });
+  }
+
+  // Add this new method after streamText
+  addEmailActionButtons(messageEl, originalContent) {
+    const alreadyWrapped = messageEl.querySelector(".message-with-actions");
+    if (alreadyWrapped) return; // Don't add twice
+
+    const buttonsDiv = document.createElement("div");
+    buttonsDiv.className = "action-buttons email-actions";
+    buttonsDiv.dataset.messageContent = originalContent; // Store the content
+
+    // Primary actions row
+    const primaryActions = document.createElement("div");
+    primaryActions.className = "action-buttons-row primary";
+
+    // Copy button
+    const copyBtn = this.createActionButton(
+      "copy",
+      "Kopieren",
+      `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>`,
+      () => this.handleCopyAction(originalContent)
+    );
+
+    // Reply button
+    const replyBtn = this.createActionButton(
+      "gmail-reply",
+      "Als Antwort einfügen",
+      `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="9 10 4 15 9 20"></polyline>
+        <path d="M20 4v7a4 4 0 0 1-4 4H4"></path>
+      </svg>`,
+      () => this.handleGmailReply(originalContent)
+    );
+
+    primaryActions.appendChild(copyBtn);
+    primaryActions.appendChild(replyBtn);
+
+    // Variation actions row
+    const variationActions = document.createElement("div");
+    variationActions.className = "action-buttons-row variations";
+
+    // Formeller button
+    const formellerBtn = this.createActionButton(
+      "formeller",
+      "Formeller",
+      `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 2L12 14"></path>
+        <path d="M7 8L12 14L17 8"></path>
+        <path d="M5 22h14"></path>
+      </svg>`,
+      () => this.handleVariation(originalContent, "formeller")
+    );
+
+    // Informeller button
+    const informellerBtn = this.createActionButton(
+      "informeller",
+      "Informeller",
+      `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+        <line x1="9" y1="9" x2="9.01" y2="9"></line>
+        <line x1="15" y1="9" x2="15.01" y2="9"></line>
+      </svg>`,
+      () => this.handleVariation(originalContent, "informeller")
+    );
+
+    // Kürzer button
+    const kuerzerBtn = this.createActionButton(
+      "kuerzer",
+      "Kürzer",
+      `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="5 12 9 12 9 12 19 12"></polyline>
+        <polyline points="15 8 19 12 15 16"></polyline>
+        <polyline points="9 16 5 12 9 8"></polyline>
+      </svg>`,
+      () => this.handleVariation(originalContent, "kuerzer")
+    );
+
+    // Länger button
+    const laengerBtn = this.createActionButton(
+      "laenger",
+      "Länger",
+      `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="9 12 5 12 5 12 5 12"></polyline>
+        <polyline points="19 12 19 12 19 12 15 12"></polyline>
+        <polyline points="9 8 5 12 9 16"></polyline>
+        <polyline points="15 16 19 12 15 8"></polyline>
+      </svg>`,
+      () => this.handleVariation(originalContent, "laenger")
+    );
+
+    variationActions.appendChild(formellerBtn);
+    variationActions.appendChild(informellerBtn);
+    variationActions.appendChild(kuerzerBtn);
+    variationActions.appendChild(laengerBtn);
+
+    buttonsDiv.appendChild(primaryActions);
+    buttonsDiv.appendChild(variationActions);
+
+    // Wrap existing content and add buttons
+    const currentContent = messageEl.innerHTML;
+    messageEl.innerHTML = "";
+
+    const containerDiv = document.createElement("div");
+    containerDiv.className = "message-with-actions";
+
+    const contentDiv = document.createElement("div");
+    contentDiv.className = "message-content";
+    contentDiv.innerHTML = currentContent;
+
+    containerDiv.appendChild(contentDiv);
+    containerDiv.appendChild(buttonsDiv);
+
+    messageEl.appendChild(containerDiv);
+    requestAnimationFrame(() => {
+      this.scrollToBottom();
+    });
+  }
+
+  // Helper method to create action buttons
+  createActionButton(className, label, svgIcon, onClick) {
+    const button = document.createElement("button");
+    button.className = `action-btn ${className}-btn`;
+    button.innerHTML = `${svgIcon} <span>${label}</span>`;
+    button.onclick = onClick;
+    return button;
+  }
+
+  // Handle copy action
+  async handleCopyAction(content) {
+    try {
+      await navigator.clipboard.writeText(content);
+      // Visual feedback
+      event.target.closest(".action-btn").innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+          <path d="M20 6L9 17l-5-5"></path>
+        </svg>
+        <span>Kopiert!</span>
+      `;
+      event.target.closest(".action-btn").classList.add("success");
+
+      setTimeout(() => {
+        event.target.closest(".action-btn").innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          <span>Kopieren</span>
+        `;
+        event.target.closest(".action-btn").classList.remove("success");
+      }, 2000);
+    } catch (err) {
+      console.error("[App] Copy failed:", err);
+    }
+  }
+
+  // Handle variation requests
+  async handleVariation(originalContent, variation) {
+    console.log(`[App] Requesting ${variation} variation`);
+
+    // Create the appropriate user message
+    let userMessage = "";
+    switch (variation) {
+      case "formeller":
+        userMessage = "Bitte schreibe die E-Mail formeller";
+        break;
+      case "informeller":
+        userMessage = "Bitte schreibe die E-Mail informeller";
+        break;
+      case "kuerzer":
+        userMessage = "Bitte kürze die E-Mail";
+        break;
+      case "laenger":
+        userMessage = "Bitte schreibe die E-Mail ausführlicher";
+        break;
+    }
+
+    // Add user message to chat
+    this.addMessage(userMessage, "user");
+
+    // Show thinking indicator
+    const thinkingId = this.showTypingIndicator();
+
+    try {
+      // Build context with the original email
+      const variationContext = {
+        content: originalContent,
+        isVariationRequest: true,
+        variationType: variation,
+      };
+
+      // Build the full prompt
+      const prompt = `${userMessage}. 
+
+  Vorherige E-Mail-Antwort:
+  ${originalContent}
+
+  Bitte behalte alle wichtigen Informationen bei, aber passe den Stil entsprechend an.`;
+
+      // Send to chat controller
+      const response = await this.chatController.sendMessage(
+        prompt,
+        variationContext
+      );
+
+      // Remove thinking indicator
+      this.removeTypingIndicator(thinkingId);
+
+      // Stream the response with action buttons
+      const messageId = this.startStreamingMessage();
+      await this.streamText(messageId, response?.content || "", 3);
+    } catch (error) {
+      console.error(`[App] Failed to create ${variation} variation:`, error);
+      this.removeTypingIndicator(thinkingId);
+      this.showError(`Fehler beim Erstellen der ${variation}en Version`);
+    }
   }
 
   showTypingIndicator() {
@@ -1046,8 +1241,17 @@ class CompanyGPTChat {
 
   scrollToBottom() {
     if (this.elements.messagesContainer) {
-      this.elements.messagesContainer.scrollTop =
-        this.elements.messagesContainer.scrollHeight;
+      // Use requestAnimationFrame to ensure DOM is updated
+      requestAnimationFrame(() => {
+        this.elements.messagesContainer.scrollTop =
+          this.elements.messagesContainer.scrollHeight;
+
+        // Fallback: try again after a short delay
+        setTimeout(() => {
+          this.elements.messagesContainer.scrollTop =
+            this.elements.messagesContainer.scrollHeight;
+        }, 100);
+      });
     }
   }
 
