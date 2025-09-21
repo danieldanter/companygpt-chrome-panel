@@ -1282,29 +1282,6 @@ class CompanyGPTChat {
       this.showError(`Fehler: ${error.message}`);
     }
   }
-
-  // Add method to toggle RAG results
-  toggleRAGResults() {
-    const isExpanded = this.store.get("chat.ragResultsExpanded");
-    this.store.set("chat.ragResultsExpanded", !isExpanded);
-
-    // Update UI
-    const ragResults = document.querySelector(".rag-results");
-    const ragContent = document.querySelector(".rag-results-content");
-    const ragArrow = document.querySelector(".rag-arrow");
-
-    if (ragResults && ragContent && ragArrow) {
-      if (!isExpanded) {
-        ragResults.classList.add("expanded");
-        ragContent.style.display = "block";
-        ragArrow.textContent = "▼";
-      } else {
-        ragResults.classList.remove("expanded");
-        ragContent.style.display = "none";
-        ragArrow.textContent = "▶";
-      }
-    }
-  }
 }
 
 // Initialize app when DOM is ready

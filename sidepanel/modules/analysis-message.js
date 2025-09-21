@@ -112,19 +112,13 @@ export class AnalysisMessage {
    * Show RAG results in collapsible
    */
   showRAGResults(messageEl, results, entriesCount = 0) {
-    const isExpanded = this.store.get("chat.ragResultsExpanded");
     const content = `
-      <div class="rag-results ${isExpanded ? "expanded" : ""}">
-        <div class="rag-results-header" onclick="window.companyGPTChat.toggleRAGResults()">
-          <span class="rag-arrow">${isExpanded ? "▼" : "▶"}</span>
-          <span>Gefundene Informationen (${entriesCount} Einträge)</span>
+        <div class="rag-results-simple">
+        <div class="rag-results-label">Gefundene Informationen (${entriesCount} Einträge):</div>
+        <div class="rag-results-content-visible">
+            ${this.formatRAGResults(results)}
         </div>
-        <div class="rag-results-content" style="display: ${
-          isExpanded ? "block" : "none"
-        };">
-          <div class="rag-results-text">${this.formatRAGResults(results)}</div>
         </div>
-      </div>
     `;
     this.updateStepResult(messageEl, content, "complete");
   }

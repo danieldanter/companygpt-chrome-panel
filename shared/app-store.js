@@ -53,7 +53,6 @@
       },
       extractedQuery: null,
       ragResults: null,
-      ragResultsExpanded: false,
     },
 
     // Context

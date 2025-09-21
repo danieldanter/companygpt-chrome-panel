@@ -1775,6 +1775,7 @@ mark {
   font-size: 13px;
   color: var(--text-secondary);
   animation: fadeIn 0.3s ease;
+  max-width: 85%;
 }
 
 .analysis-message.running {
@@ -1859,47 +1860,41 @@ mark {
   font-size: 13px;
 }
 
-/* RAG Results Collapsible */
-.rag-results {
+/* Dark mode adjustments for analysis messages */
+@media (prefers-color-scheme: dark) {
+  .analysis-message {
+    background: rgba(14, 165, 233, 0.08);
+    border-color: rgba(14, 165, 233, 0.2);
+  }
+
+  .query-bubble {
+    background: var(--bg-secondary);
+  }
+}
+
+/* RAG Results (Simplified - Always Visible) */
+.rag-results-simple {
   margin-top: 4px;
   border: 1px solid var(--border);
   border-radius: var(--r-m);
   overflow: hidden;
 }
 
-.rag-results-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.rag-results-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   padding: 8px 12px;
   background: var(--bg-secondary);
-  cursor: pointer;
-  user-select: none;
-  transition: background 0.15s ease;
+  border-bottom: 1px solid var(--border);
 }
 
-.rag-results-header:hover {
-  background: var(--hover-bg);
-}
-
-.rag-arrow {
-  font-size: 10px;
-  transition: transform 0.2s ease;
-}
-
-.rag-results.expanded .rag-arrow {
-  transform: rotate(90deg);
-}
-
-.rag-results-content {
+.rag-results-content-visible {
   padding: 12px;
   background: var(--bg-primary);
-  border-top: 1px solid var(--border);
-  max-height: 300px;
+  max-height: 200px;
   overflow-y: auto;
-}
-
-.rag-results-text {
   font-size: 12px;
   line-height: 1.5;
   color: var(--text-secondary);
@@ -1925,20 +1920,15 @@ mark {
 
 /* Dark mode adjustments */
 @media (prefers-color-scheme: dark) {
-  .analysis-message {
-    background: rgba(14, 165, 233, 0.08);
-    border-color: rgba(14, 165, 233, 0.2);
+  .rag-results-simple {
+    background: rgba(14, 165, 233, 0.05);
   }
 
-  .query-bubble {
-    background: var(--bg-secondary);
-  }
-
-  .rag-results-header {
+  .rag-results-label {
     background: rgba(255, 255, 255, 0.03);
   }
 
-  .rag-results-header:hover {
-    background: rgba(255, 255, 255, 0.05);
+  .rag-results-content-visible {
+    background: var(--bg-secondary);
   }
 }
