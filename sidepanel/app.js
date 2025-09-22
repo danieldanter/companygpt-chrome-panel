@@ -781,7 +781,7 @@ class CompanyGPTChat {
           const replyBtn = document.createElement("button");
           replyBtn.className = "action-btn gmail-reply-btn";
           replyBtn.innerHTML = "↩️ Als Antwort einfügen";
-          replyBtn.onclick = () => this.handleGmailReply(content);
+          replyBtn.onclick = () => this.handleEmailReply(content);
           buttonsDiv.appendChild(replyBtn);
         } else if (lastUserIntent === "email-new") {
           const composeBtn = document.createElement("button");
@@ -809,57 +809,74 @@ class CompanyGPTChat {
     });
   }
 
-  async handleGmailReply(content) {
-    console.log("[App] Handling Gmail reply");
+  // Change this method from handleGmailReply to handleEmailReply
+  async handleEmailReply(content) {
+    // Renamed from handleGmailReply
+    console.log("[App] Handling email reply");
+
+    // Get the email provider from context
+    const context = this.store.get("context");
+    const emailProvider = context?.emailProvider || "unknown";
+
+    console.log(`[App] Email provider: ${emailProvider}`);
 
     const emailData = this.parseEmailContent(content);
     console.log("[App] Parsed email data:", emailData);
 
     try {
+      // Find the email tab (Gmail OR Outlook)
       const tabs = await chrome.tabs.query({});
-      const gmailTab = tabs.find((tab) => tab.url?.includes("mail.google.com"));
+      const emailTab = tabs.find(
+        (tab) =>
+          tab.url?.includes("mail.google.com") ||
+          tab.url?.includes("outlook.office.com") ||
+          tab.url?.includes("outlook.live.com")
+      );
 
-      if (gmailTab) {
-        console.log("[App] Found Gmail tab:", gmailTab.id);
+      if (emailTab) {
+        console.log(`[App] Found ${emailProvider} tab:`, emailTab.id);
 
-        try {
-          const response = await chrome.tabs.sendMessage(gmailTab.id, {
-            action: "INSERT_EMAIL_REPLY",
-            data: emailData,
-          });
+        // Send message to insert reply
+        const response = await chrome.tabs.sendMessage(emailTab.id, {
+          action: "INSERT_EMAIL_REPLY",
+          data: emailData,
+          provider: emailProvider,
+        });
 
-          console.log("[App] Insert response:", response);
-          await chrome.tabs.update(gmailTab.id, { active: true });
-        } catch (messageError) {
-          console.log("[App] Content script not responding, reinjecting...");
+        console.log("[App] Insert response:", response);
 
-          await chrome.scripting.executeScript({
-            target: { tabId: gmailTab.id },
-            files: ["content/content-script.js"],
-          });
+        if (response?.success) {
+          // Focus the email tab
+          await chrome.tabs.update(emailTab.id, { active: true });
 
-          await new Promise((resolve) => setTimeout(resolve, 500));
-
-          const response = await chrome.tabs.sendMessage(gmailTab.id, {
-            action: "INSERT_EMAIL_REPLY",
-            data: emailData,
-          });
-
-          console.log("[App] Insert response (second try):", response);
-          await chrome.tabs.update(gmailTab.id, { active: true });
+          // Show success message based on method
+          if (
+            response.method === "clipboard" ||
+            response.method === "clipboard-ready"
+          ) {
+            this.addMessage(
+              `✅ Email-Antwort wurde kopiert!\n\n${response.message}`,
+              "system"
+            );
+          } else {
+            this.addMessage("✅ Email-Antwort wurde eingefügt!", "system");
+          }
         }
       } else {
-        console.log("[App] No Gmail tab found, opening new one");
-
-        const composeUrl = `https://mail.google.com/mail/?view=cm&su=${encodeURIComponent(
-          emailData.subject
-        )}&body=${encodeURIComponent(emailData.body)}`;
-        await chrome.tabs.create({ url: composeUrl });
+        // No email tab open - just copy to clipboard
+        await navigator.clipboard.writeText(content);
+        this.addMessage(
+          "📋 Email-Antwort wurde in die Zwischenablage kopiert!\n\n" +
+            "Öffnen Sie Ihre Email und fügen Sie die Antwort ein.",
+          "system"
+        );
       }
     } catch (error) {
-      console.error("[App] Error inserting Gmail reply:", error);
-      navigator.clipboard.writeText(content);
-      alert("Email copied to clipboard. Could not insert directly into Gmail.");
+      console.error("[App] Error inserting email reply:", error);
+
+      // Fallback to clipboard
+      await navigator.clipboard.writeText(content);
+      alert("Email wurde in die Zwischenablage kopiert!");
     }
   }
 
@@ -1027,7 +1044,7 @@ class CompanyGPTChat {
         <polyline points="9 10 4 15 9 20"></polyline>
         <path d="M20 4v7a4 4 0 0 1-4 4H4"></path>
       </svg>`,
-      () => this.handleGmailReply(originalContent)
+      () => this.handleEmailReply(originalContent)
     );
 
     primaryActions.appendChild(copyBtn);
@@ -1299,6 +1316,7 @@ class CompanyGPTChat {
     const context = this.contextManager?.getContextForMessage();
     console.log("[App] Context retrieved:", context);
 
+    // --- Existing validation ---
     if (!this.contextManager || !this.contextManager.hasContext()) {
       this.showError("Bitte lade zuerst den Seitenkontext");
       return;
@@ -1324,16 +1342,25 @@ class CompanyGPTChat {
     );
     if (button) button.classList.add("loading");
 
-    const isGmail = !!context?.isGmail || context?.sourceType === "gmail";
+    // --- Updated detection: treat ANY email provider as email ---
+    const isEmail =
+      !!context?.isEmail ||
+      !!context?.isGmail ||
+      !!context?.isOutlook ||
+      context?.emailProvider ||
+      context?.sourceType === "email"; // optional: cover generic sourceType
+
     const isGoogleDocs =
       !!context?.isGoogleDocs || context?.sourceType === "docs";
+
     const isDocumentLike =
       isGoogleDocs || !!context?.isDocument || !!context?.isPage;
 
     let query = "";
+
     switch (action) {
       case "summarize":
-        if (isGmail) {
+        if (isEmail) {
           query =
             "Bitte fasse mir den Email-Verlauf zusammen und bringe mich auf den neuesten Stand.";
         } else if (isGoogleDocs) {
@@ -1345,7 +1372,7 @@ class CompanyGPTChat {
         break;
 
       case "reply":
-        if (!isGmail) {
+        if (!isEmail) {
           this.showError("Diese Aktion ist nur für E-Mails verfügbar.");
           if (button) button.classList.remove("loading");
           return;
@@ -1355,7 +1382,7 @@ class CompanyGPTChat {
         break;
 
       case "reply-with-data":
-        if (!isGmail) {
+        if (!isEmail) {
           this.showError("Diese Aktion ist nur für E-Mails verfügbar.");
           if (button) button.classList.remove("loading");
           return;
@@ -1416,6 +1443,7 @@ class CompanyGPTChat {
       if (button) button.classList.remove("loading");
     }
   }
+
   // Add this method to your CompanyGPTChat class in app.js
   // Place it after the handleContextAction method
 
