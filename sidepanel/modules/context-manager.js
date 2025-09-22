@@ -89,15 +89,23 @@ export class ContextManager {
     });
   }
 
+  // context-manager.js - Update monitorPageChanges (around line 120)
   async monitorPageChanges() {
+    let lastCheckedUrl = null;
+
     // Check for URL changes every 2 seconds
     setInterval(async () => {
       const currentUrl = await this.getCurrentUrl();
-      const lastUrl = this.store.get("context.url");
 
-      if (lastUrl && currentUrl !== lastUrl) {
-        console.log("[ContextManager] Page changed:", currentUrl);
-        this.onPageChange(currentUrl);
+      // ✅ Only trigger if URL actually changed
+      if (currentUrl && currentUrl !== lastCheckedUrl) {
+        lastCheckedUrl = currentUrl;
+        const contextUrl = this.store.get("context.url");
+
+        if (contextUrl && currentUrl !== contextUrl) {
+          console.log("[ContextManager] Page changed:", currentUrl);
+          this.onPageChange(currentUrl);
+        }
       }
     }, 2000);
   }

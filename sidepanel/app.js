@@ -1260,6 +1260,7 @@ class CompanyGPTChat {
     this.contextManager?.loadPageContext();
   }
 
+  // app.js - Update handleBackgroundMessage (around line 1265)
   handleBackgroundMessage(message) {
     switch (message.type) {
       case "TAB_INFO":
@@ -1269,6 +1270,10 @@ class CompanyGPTChat {
       case "AUTH_STATE_CHANGED":
         // Re-check auth when auth state changes
         this.checkAuth();
+        break;
+      case "STATE_SYNC":
+        // ✅ Handle state sync messages (already handled by StateManager)
+        // Just acknowledge it's a known message type
         break;
       default:
         console.log("[App] Unknown message type:", message.type);

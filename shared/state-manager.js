@@ -22,6 +22,7 @@ class StateManager {
   }
 
   // Create reactive proxy
+  // state-manager.js - Update the createProxy method (around line 30)
   createProxy(obj, path = []) {
     return new Proxy(obj, {
       get: (target, prop) => {
@@ -34,6 +35,19 @@ class StateManager {
 
       set: (target, prop, value) => {
         const oldValue = target[prop];
+
+        // ✅ Check if value actually changed
+        if (oldValue === value) {
+          return true; // No change, don't notify
+        }
+
+        // For objects, do a deep comparison
+        if (typeof value === "object" && typeof oldValue === "object") {
+          if (JSON.stringify(oldValue) === JSON.stringify(value)) {
+            return true; // No actual change
+          }
+        }
+
         target[prop] = value;
 
         // Notify listeners
@@ -231,18 +245,34 @@ class StateManager {
   }
 
   // Cross-context synchronization (between popup, content, background)
+  // state-manager.js - Update setupCrossContextSync (around line 164)
   setupCrossContextSync() {
+    // Add a flag to prevent sync loops
+    let isSyncing = false;
+
     // Listen for state changes from other contexts
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.type === "STATE_SYNC" && message.key === this.persistKey) {
+        // ✅ Set flag to prevent re-broadcast
+        isSyncing = true;
+
         // Update local state without triggering sync again
         this.batch(message.updates);
+
+        // Reset flag after a microtask
+        Promise.resolve().then(() => {
+          isSyncing = false;
+        });
+
         sendResponse({ success: true });
       }
     });
 
     // Broadcast state changes
     const broadcast = (path, value) => {
+      // ✅ Don't broadcast if we're syncing from another context
+      if (isSyncing) return;
+
       chrome.runtime
         .sendMessage({
           type: "STATE_SYNC",
@@ -257,6 +287,9 @@ class StateManager {
     // Debounce broadcasts
     let broadcastTimer;
     this.subscribe("*", (state, oldState, changedPath) => {
+      // ✅ Don't broadcast if syncing
+      if (isSyncing) return;
+
       clearTimeout(broadcastTimer);
       broadcastTimer = setTimeout(() => {
         broadcast(changedPath, this.get(changedPath));
