@@ -165,9 +165,23 @@ export class ContextManager {
 
       // Process the context
       const processedContext = this.processContext(context);
+      // ADD THIS DEBUG LOG
+      console.log("[ContextManager] Processed context before store update:", {
+        isEmail: processedContext.isEmail,
+        isOutlook: processedContext.isOutlook,
+        emailProvider: processedContext.emailProvider,
+        isGmail: processedContext.isGmail,
+      });
 
       // Update store
       this.store.actions.setContext(processedContext);
+
+      console.log("[ContextManager] Store state after update:", {
+        isEmail: this.store.get("context.isEmail"),
+        isOutlook: this.store.get("context.isOutlook"),
+        emailProvider: this.store.get("context.emailProvider"),
+        isGmail: this.store.get("context.isGmail"),
+      });
 
       // Update UI
       this.setButtonState("loaded");
@@ -404,6 +418,9 @@ export class ContextManager {
     let textContent = "";
     if (rawContext?.mainContent) {
       textContent = this.cleanText(rawContext.mainContent);
+    } else if (rawContext?.content) {
+      // ADD THIS - sometimes it's in content not mainContent
+      textContent = this.cleanText(rawContext.content);
     }
 
     // Selected text
@@ -423,24 +440,42 @@ export class ContextManager {
 
     // Flags
     const url = rawContext?.url || "";
+    const metadata = rawContext?.metadata || {}; // ADD THIS - get metadata
+
     const isGmail =
-      !!rawContext?.metadata?.isGmail ||
+      !!metadata.isGmail || // Check metadata first
       rawContext?.pageType === "gmail" ||
       rawContext?.siteType === "gmail" ||
       rawContext?.hostname?.includes("mail.google.com") ||
       rawContext?.url?.includes("mail.google.com");
 
+    // ADD THIS - Outlook detection
+    const isOutlook =
+      !!metadata.isOutlook || // Check metadata first
+      metadata.emailProvider === "outlook" ||
+      rawContext?.siteType === "outlook" ||
+      rawContext?.hostname?.includes("outlook.office.com") ||
+      rawContext?.hostname?.includes("outlook.live.com") ||
+      rawContext?.url?.includes("outlook.office.com") ||
+      rawContext?.url?.includes("outlook.live.com");
+
+    // ADD THIS - Generic email flag
+    const isEmail = !!metadata.isEmail || isGmail || isOutlook;
+
+    // ADD THIS - Email provider
+    const emailProvider =
+      metadata.emailProvider ||
+      (isOutlook ? "outlook" : isGmail ? "gmail" : null);
+
     const isGoogleDocs =
-      !!rawContext?.metadata?.isGoogleDocs ||
+      !!metadata.isGoogleDocs ||
       rawContext?.pageType === "googleDocs" ||
       rawContext?.siteType === "google-docs" ||
       rawContext?.hostname?.includes("docs.google.com") ||
       rawContext?.url?.includes("docs.google.com");
 
     const extractionMethod =
-      rawContext?.extractionMethod ||
-      rawContext?.metadata?.extractionMethod ||
-      "unknown";
+      rawContext?.extractionMethod || metadata?.extractionMethod || "unknown";
 
     const processedContext = {
       title: rawContext?.title || "Untitled Page",
@@ -448,13 +483,21 @@ export class ContextManager {
       domain,
       selectedText,
       mainContent: textContent,
-      content: textContent, // Store as both for compatibility
+      content: textContent,
       wordCount,
       timestamp: Date.now(),
       isGoogleDocs,
       isGmail,
+      isOutlook, // ADD THIS
+      isEmail, // ADD THIS
+      emailProvider, // ADD THIS
       extractionMethod,
-      metadata: rawContext?.metadata || {},
+      metadata: {
+        ...metadata, // Spread existing metadata
+        isEmail, // Also include in metadata
+        isOutlook, // Also include in metadata
+        emailProvider, // Also include in metadata
+      },
       summary: this.generateContentSummary(textContent),
     };
 
@@ -465,11 +508,14 @@ export class ContextManager {
       hasSelectedText: !!processedContext.selectedText,
       isGoogleDocs: processedContext.isGoogleDocs,
       isGmail: processedContext.isGmail,
+      isOutlook: processedContext.isOutlook, // ADD THIS to log
+      isEmail: processedContext.isEmail, // ADD THIS to log
+      emailProvider: processedContext.emailProvider, // ADD THIS to log
       method: processedContext.extractionMethod,
       contentLength: processedContext.mainContent.length,
     });
 
-    return processedContext;
+    return processedContext; // Make sure you have this return statement
   }
 
   async enhanceWithApiData(response) {
@@ -645,9 +691,19 @@ export class ContextManager {
     // Get the action buttons container
     const actionsRow = document.getElementById("context-actions-row");
 
-    // Update store for UI state
-    if (context.isGmail) {
-      contextInfo += ` • Gmail`;
+    // Check for ANY email provider (Gmail OR Outlook)
+    if (context.isEmail || context.isGmail || context.isOutlook) {
+      // Add provider to display
+      if (context.isGmail) {
+        contextInfo += ` • Gmail`;
+      } else if (context.isOutlook) {
+        contextInfo += ` • Outlook`;
+      } else if (context.emailProvider) {
+        contextInfo += ` • ${context.emailProvider}`;
+      } else {
+        contextInfo += ` • Email`;
+      }
+
       this.store.set("ui.contextActionsVisible", true);
       if (actionsRow) {
         actionsRow.style.display = "flex";

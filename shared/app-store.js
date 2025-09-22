@@ -260,6 +260,13 @@
           contextData.isGmail || contextData.siteType === "gmail",
         "context.isGoogleDocs":
           contextData.isGoogleDocs || contextData.siteType === "google-docs",
+        // ADD THIS LINE
+        "context.isOutlook":
+          contextData.isOutlook || contextData.siteType === "outlook",
+        // ADD THIS LINE
+        "context.isEmail":
+          contextData.isEmail || contextData.isGmail || contextData.isOutlook,
+        "context.emailProvider": contextData.emailProvider, // ADD THIS LINE
         "context.metadata": contextData.metadata || {},
         "ui.contextBarVisible": true,
       });
