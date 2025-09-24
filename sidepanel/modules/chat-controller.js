@@ -222,15 +222,37 @@ export class ChatController {
       context = this.store.get("context");
     }
 
-    if (context?.isGmail || context?.sourceType === "gmail") {
+    const lowerText = text?.toLowerCase() || "";
+
+    // Check for ANY email context (Gmail, Outlook, or generic email)
+    if (
+      context?.isEmail ||
+      context?.isGmail ||
+      context?.isOutlook ||
+      context?.emailProvider
+    ) {
+      // If we have email context, check if user wants to reply
+      if (
+        lowerText.includes("beantworte") ||
+        lowerText.includes("antwort") ||
+        lowerText.includes("reply") ||
+        lowerText.includes("email")
+      ) {
+        return "email-reply";
+      }
+      // Even without explicit keywords, if it's email context, assume email-reply
       return "email-reply";
     }
+
+    // Keep your existing checks
     if (context?.isGoogleDocs || context?.sourceType === "docs") {
       return "doc-actions";
     }
+
     if (context?.sourceType === "calendar") {
       return "calendar-actions";
     }
+
     return "general";
   }
 
@@ -409,33 +431,32 @@ export class ChatController {
   /**
    * Send a message
    */
-  async sendMessage(text, context = null, selectedDataCollection = null) {
+  // In chat-controller.js
+  async sendMessage(message, context = null, explicitIntent = null) {
     console.log("[ChatController] === SENDING MESSAGE ===");
-    console.log("[ChatController] Text:", text);
+    console.log("[ChatController] Text:", message);
     console.log("[ChatController] Context:", context);
-    console.log(
-      "[ChatController] Selected Data Collection:",
-      selectedDataCollection
-    );
+    console.log("[ChatController] Explicit Intent:", explicitIntent);
 
     if (!this.isInitialized) {
       throw new Error("ChatController not initialized");
     }
 
-    // Detect and store intent
-    let intent = this.detectIntent(text, context);
+    // Use explicit intent if provided, otherwise detect it
+    let intent = explicitIntent || this.detectIntent(message, context);
 
-    // IMPORTANT: If this is a variation request, keep the email-reply intent
-    if (context?.isVariationRequest) {
-      intent = "email-reply"; // Force email-reply intent for variations
+    // Preserve your variation override behavior (optional but useful)
+    if (!explicitIntent && context?.isVariationRequest) {
+      intent = "email-reply";
       console.log(
         "[ChatController] Variation request detected, forcing email-reply intent"
       );
     }
 
-    this.store.set("chat.lastUserIntent", intent);
+    // Store the intent
     this.store.set("chat.currentIntent", intent);
-    this.log("Detected intent:", intent);
+    this.store.set("chat.lastUserIntent", intent);
+    console.log("[ChatController] Using intent:", intent);
 
     // Generate session ID if needed
     if (!this.store.get("chat.sessionId")) {
@@ -444,7 +465,7 @@ export class ChatController {
     }
 
     // Build message content (combine context into the content field)
-    let finalContent = text;
+    let finalContent = message;
     if (context && (context.mainContent || context.selectedText)) {
       const contextContent = context.selectedText || context.mainContent;
       let contextLabel = "[Kontext]";
@@ -461,7 +482,7 @@ export class ChatController {
         contextLabel = "[Webseiten-Kontext]";
       }
 
-      finalContent = `${contextLabel}\n${contextContent}\n\n[Benutzer-Anfrage]\n${text}`;
+      finalContent = `${contextLabel}\n${contextContent}\n\n[Benutzer-Anfrage]\n${message}`;
       this.log("Combined content length:", finalContent.length);
     }
 
@@ -473,9 +494,9 @@ export class ChatController {
       timestamp: Date.now(),
       references: [],
       sources: [],
-      _originalText: text,
+      _originalText: message,
       _context: context,
-      _dataCollection: selectedDataCollection, // Store for reference
+      // _dataCollection intentionally not stored here since the new signature doesn't pass it directly
     };
 
     // Get current messages and add new one
@@ -494,6 +515,12 @@ export class ChatController {
       if (!domain) {
         throw new Error("No domain configured");
       }
+
+      // Determine selected data collection from context or store (since param is removed)
+      const selectedDataCollection =
+        context?.selectedDataCollection ||
+        this.store.get("chat.selectedDataCollection") ||
+        null;
 
       // Determine mode based on whether we're using Datenspeicher
       const mode = selectedDataCollection ? "QA" : "BASIC";
@@ -524,6 +551,8 @@ export class ChatController {
         selectedFiles: [],
         selectedMode: mode, // Dynamic mode based on Datenspeicher usage
         temperature: 0.2,
+        // optional: you could include intent here if your backend supports it
+        // intent,
       };
 
       console.log("[ChatController] === PAYLOAD DEBUG ===");

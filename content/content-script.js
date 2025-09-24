@@ -200,46 +200,146 @@
     }
 
     async insertReply(content) {
-      // For Outlook, use clipboard
+      console.log(`[EmailHandler] Inserting reply for ${this.provider}`);
+
       if (this.provider === "outlook") {
-        const cleanContent = content
-          .replace(/^["']|["']$/g, "")
-          .replace(/\\n/g, "\n");
-        await navigator.clipboard.writeText(cleanContent);
-
-        // Try to click reply button
-        const replyButton = document.querySelector(
-          'button[aria-label*="Reply"], button[aria-label*="Antworten"], button[name="Reply"]'
-        );
-        if (replyButton) {
-          replyButton.click();
-
-          // Wait and focus compose area
-          setTimeout(() => {
-            const composeArea = document.querySelector(
-              '[aria-label*="Message body"], .rooster-editor, [contenteditable="true"][role="textbox"]'
-            );
-            if (composeArea) {
-              composeArea.focus();
-            }
-          }, 1000);
-        }
-
-        return {
-          success: true,
-          method: "clipboard-ready",
-          message: "Reply copied! Press Ctrl+V (or Cmd+V on Mac) to paste.",
-        };
+        return this.insertOutlookReply(content);
       }
 
-      // For Gmail, use direct insertion
       if (this.provider === "gmail") {
         return this.insertGmailReply(content);
       }
 
-      // Fallback
-      await navigator.clipboard.writeText(content);
-      return { success: true, method: "clipboard" };
+      // Generic fallback
+      try {
+        await navigator.clipboard.writeText(content);
+        return { success: true, method: "clipboard" };
+      } catch (err) {
+        return { success: false, error: err.message, content: content };
+      }
+    }
+
+    async insertOutlookReply(emailContent) {
+      console.log("[EmailHandler] Starting Outlook insertion process...");
+
+      // Clean the content
+      let cleanContent = emailContent;
+      if (typeof emailContent === "object") {
+        cleanContent = emailContent.body || emailContent.content || "";
+      }
+      cleanContent = cleanContent
+        .replace(/^["']|["']$/g, "")
+        .replace(/\\n/g, "\n");
+
+      try {
+        // Find and click reply button
+        const replyButton = document.querySelector(
+          'button[aria-label="Antworten"][role="menuitem"]'
+        );
+
+        if (replyButton) {
+          console.log("[EmailHandler] ✓ Found reply button");
+          replyButton.click();
+
+          // Wait for compose area to fully load
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+
+          // Find the compose area
+          let composeArea =
+            document.querySelector(
+              'div[role="textbox"][aria-label="Nachrichtentext"]'
+            ) ||
+            document.querySelector("div.elementToProof") ||
+            document.querySelector('#editorParent_2 [contenteditable="true"]');
+
+          if (composeArea) {
+            console.log("[EmailHandler] ✓ Found compose area");
+
+            // Get the actual editable div
+            const editableDiv =
+              composeArea.querySelector(".elementToProof") || composeArea;
+
+            // Focus and click
+            editableDiv.focus();
+            editableDiv.click();
+
+            // Wait for focus
+            await new Promise((resolve) => setTimeout(resolve, 300));
+
+            // Clear any existing content
+            editableDiv.innerHTML = "";
+
+            // Format the content for Outlook
+            // Split by double newlines for paragraphs
+            const paragraphs = cleanContent
+              .split(/\n\n+/)
+              .filter((p) => p.trim());
+
+            // Create proper HTML for Outlook
+            const formattedHTML = paragraphs
+              .map((para) => {
+                // Replace single newlines within paragraphs with <br>
+                const formattedPara = para.replace(/\n/g, "<br>");
+                // Wrap in div with Outlook's styling
+                return `<div style="font-family: Aptos, Aptos_EmbeddedFont, Aptos_MSFontService, Calibri, Helvetica, sans-serif; font-size: 12pt; color: rgb(0, 0, 0);">${formattedPara}</div>`;
+              })
+              .join("<div><br></div>"); // Add empty line between paragraphs
+
+            editableDiv.innerHTML = formattedHTML;
+
+            // Trigger events
+            editableDiv.dispatchEvent(new Event("input", { bubbles: true }));
+            editableDiv.dispatchEvent(new Event("change", { bubbles: true }));
+
+            console.log(
+              "[EmailHandler] ✓ Content inserted with proper formatting"
+            );
+
+            // Visual feedback
+            editableDiv.style.backgroundColor = "#e8f4f8";
+            setTimeout(() => {
+              editableDiv.style.backgroundColor = "";
+            }, 1000);
+
+            return {
+              success: true,
+              method: "direct-insert",
+              message: "Email-Antwort wurde eingefügt!",
+            };
+          } else {
+            console.warn("[EmailHandler] Compose area not found");
+          }
+        } else {
+          console.warn("[EmailHandler] Reply button not found");
+        }
+
+        // Fallback: Copy to clipboard
+        await navigator.clipboard.writeText(cleanContent);
+        console.log("[EmailHandler] Fallback: Copied to clipboard");
+
+        return {
+          success: true,
+          method: "clipboard",
+          message: "Email kopiert! Klicke ins Antwortfeld und drücke Strg+V",
+        };
+      } catch (error) {
+        console.error("[EmailHandler] Error:", error);
+
+        try {
+          await navigator.clipboard.writeText(cleanContent);
+          return {
+            success: true,
+            method: "clipboard-fallback",
+            message: "Email kopiert! Verwende Strg+V zum Einfügen",
+          };
+        } catch (clipError) {
+          return {
+            success: false,
+            error: clipError.message,
+            content: cleanContent,
+          };
+        }
+      }
     }
 
     insertGmailReply(emailData) {

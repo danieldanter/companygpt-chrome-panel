@@ -680,9 +680,28 @@ class CompanyGPTChat {
         console.log("[App] Including context with message");
       }
 
-      // Send to CompanyGPT API via ChatController
-      console.log("[App] Sending to chat controller...");
-      const response = await this.chatController.sendMessage(message, context);
+      // Detect if this is an email reply request
+      let intent = null;
+      if (context?.isEmail) {
+        const lowerMessage = (message || "").toLowerCase();
+        if (
+          lowerMessage.includes("beantworte") ||
+          lowerMessage.includes("antwort") ||
+          lowerMessage.includes("reply")
+        ) {
+          intent = "email-reply";
+          this.store.set("chat.lastUserIntent", intent);
+          this.store.set("chat.currentIntent", intent);
+        }
+      }
+
+      // Send to CompanyGPT API via ChatController (pass intent)
+      console.log("[App] Sending to chat controller with intent:", intent);
+      const response = await this.chatController.sendMessage(
+        message,
+        context,
+        intent
+      );
 
       console.log("[App] Received response from chat controller");
 
@@ -811,10 +830,8 @@ class CompanyGPTChat {
 
   // Change this method from handleGmailReply to handleEmailReply
   async handleEmailReply(content) {
-    // Renamed from handleGmailReply
     console.log("[App] Handling email reply");
 
-    // Get the email provider from context
     const context = this.store.get("context");
     const emailProvider = context?.emailProvider || "unknown";
 
@@ -824,59 +841,94 @@ class CompanyGPTChat {
     console.log("[App] Parsed email data:", emailData);
 
     try {
-      // Find the email tab (Gmail OR Outlook)
-      const tabs = await chrome.tabs.query({});
-      const emailTab = tabs.find(
-        (tab) =>
-          tab.url?.includes("mail.google.com") ||
-          tab.url?.includes("outlook.office.com") ||
-          tab.url?.includes("outlook.live.com")
-      );
+      // Get the CURRENTLY ACTIVE tab
+      const [activeTab] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
 
-      if (emailTab) {
-        console.log(`[App] Found ${emailProvider} tab:`, emailTab.id);
+      if (activeTab) {
+        console.log(`[App] Current active tab:`, activeTab.url);
 
-        // Send message to insert reply
-        const response = await chrome.tabs.sendMessage(emailTab.id, {
-          action: "INSERT_EMAIL_REPLY",
-          data: emailData,
-          provider: emailProvider,
-        });
+        // Check if it's an email tab
+        const isEmailTab =
+          activeTab.url?.includes("mail.google.com") ||
+          activeTab.url?.includes("outlook.office.com") ||
+          activeTab.url?.includes("outlook.live.com");
 
-        console.log("[App] Insert response:", response);
+        if (isEmailTab) {
+          console.log(`[App] Inserting into current tab (${emailProvider})`);
 
-        if (response?.success) {
-          // Focus the email tab
-          await chrome.tabs.update(emailTab.id, { active: true });
+          // Send message to the CURRENT tab's content script
+          try {
+            const response = await chrome.tabs.sendMessage(activeTab.id, {
+              action: "INSERT_EMAIL_REPLY",
+              data: emailData,
+              provider: emailProvider,
+            });
 
-          // Show success message based on method
-          if (
-            response.method === "clipboard" ||
-            response.method === "clipboard-ready"
-          ) {
-            this.addMessage(
-              `✅ Email-Antwort wurde kopiert!\n\n${response.message}`,
-              "system"
-            );
-          } else {
-            this.addMessage("✅ Email-Antwort wurde eingefügt!", "system");
+            console.log("[App] Insert response:", response);
+
+            if (response?.success) {
+              if (
+                response.method === "clipboard" ||
+                response.method === "clipboard-ready"
+              ) {
+                this.showNotification(`✅ ${response.message}`, "success");
+              } else {
+                this.showNotification(
+                  "✅ Email-Antwort wurde eingefügt!",
+                  "success"
+                );
+              }
+            } else if (response?.content) {
+              await navigator.clipboard.writeText(response.content);
+              this.showNotification(
+                "📋 Email kopiert! Bitte manuell einfügen (Strg+V)",
+                "info"
+              );
+            }
+          } catch (err) {
+            console.log("[App] Content script not ready, injecting...");
+
+            // Try to inject content script if it's not there
+            await chrome.scripting.executeScript({
+              target: { tabId: activeTab.id },
+              files: ["content/content-script.js"],
+            });
+
+            // Wait and retry
+            await new Promise((resolve) => setTimeout(resolve, 500));
+
+            const response = await chrome.tabs.sendMessage(activeTab.id, {
+              action: "INSERT_EMAIL_REPLY",
+              data: emailData,
+              provider: emailProvider,
+            });
+
+            console.log("[App] Insert response (retry):", response);
           }
+        } else {
+          // Current tab is not an email tab
+          await navigator.clipboard.writeText(content);
+          this.showNotification(
+            "📋 Bitte wechsle zu deinem Email-Tab. Antwort wurde kopiert!",
+            "info"
+          );
         }
-      } else {
-        // No email tab open - just copy to clipboard
-        await navigator.clipboard.writeText(content);
-        this.addMessage(
-          "📋 Email-Antwort wurde in die Zwischenablage kopiert!\n\n" +
-            "Öffnen Sie Ihre Email und fügen Sie die Antwort ein.",
-          "system"
-        );
       }
     } catch (error) {
-      console.error("[App] Error inserting email reply:", error);
-
-      // Fallback to clipboard
-      await navigator.clipboard.writeText(content);
-      alert("Email wurde in die Zwischenablage kopiert!");
+      console.error("[App] Error handling email reply:", error);
+      // Fallback: copy to clipboard
+      try {
+        await navigator.clipboard.writeText(content);
+        this.showNotification(
+          "📋 Email wurde in die Zwischenablage kopiert!",
+          "info"
+        );
+      } catch (clipErr) {
+        this.showError("Fehler beim Kopieren der Email");
+      }
     }
   }
 
@@ -940,23 +992,28 @@ class CompanyGPTChat {
 
     let processedContent = content;
 
+    // Strip surrounding quotes if present
     if (processedContent.startsWith('"') && processedContent.endsWith('"')) {
       processedContent = processedContent.slice(1, -1);
     }
 
+    // Normalize escaped newlines
     processedContent = processedContent.replace(/\\n\\n\\n\\n/g, "\n\n");
     processedContent = processedContent.replace(/\\n\\n\\n/g, "\n\n");
     processedContent = processedContent.replace(/\\n\\n/g, "\n\n");
     processedContent = processedContent.replace(/\\n/g, "\n");
 
+    // Render markdown (fallback to simple <br> replacement)
     const finalHTML = this.messageRenderer
       ? this.messageRenderer.renderMarkdown(processedContent)
       : processedContent.replace(/\n/g, "<br>");
 
+    // Convert to plain text for smooth character-by-character streaming
     const tempDiv = document.createElement("div");
     tempDiv.innerHTML = finalHTML;
     const plainText = tempDiv.textContent || tempDiv.innerText || "";
 
+    // Stream out the text
     let currentText = "";
     for (let i = 0; i < plainText.length; i++) {
       currentText += plainText[i];
@@ -972,40 +1029,26 @@ class CompanyGPTChat {
       await new Promise((resolve) => setTimeout(resolve, speed));
     }
 
+    // Replace with final rendered HTML
     messageEl.className = "message assistant";
     messageEl.innerHTML = finalHTML;
 
-    const lastUserIntent = this.chatController?.getLastUserIntent
-      ? this.chatController.getLastUserIntent()
-      : null;
+    // === New: read intent from store and show buttons only for email-reply ===
+    const intent = this.store.get("chat.lastUserIntent");
+    console.log("[App] Stream complete, intent from store:", intent);
 
-    // Get the last user message to check if it's a variation request
-    const messages = this.store.get("chat.messages") || [];
-    const lastUserMessage = messages.filter((m) => m.role === "user").pop();
-    const isVariationRequest =
-      lastUserMessage?.content?.includes("Bitte schreibe die E-Mail") ||
-      lastUserMessage?.content?.includes("Bitte kürze");
-
-    console.log("[App] Stream complete, intent:", lastUserIntent);
-    console.log("[App] Is variation request:", isVariationRequest);
-
-    // Show action buttons for email replies OR variation requests
-    if (
-      (lastUserIntent &&
-        (lastUserIntent === "email-reply" || lastUserIntent === "email-new")) ||
-      isVariationRequest
-    ) {
+    if (intent === "email-reply") {
+      console.log("[App] Adding email action buttons");
       this.addEmailActionButtons(messageEl, content);
     }
 
-    // IMPORTANT: Multiple scroll attempts to ensure it works
+    // Ensure we end scrolled to bottom
     this.scrollToBottom(); // Immediate
 
-    // Wait for buttons to be added to DOM
+    // After DOM paints, scroll again
     requestAnimationFrame(() => {
       this.scrollToBottom();
-
-      // Final fallback after everything should be rendered
+      // Final fallback after UI settles
       setTimeout(() => {
         this.scrollToBottom();
       }, 250);
@@ -1356,6 +1399,23 @@ class CompanyGPTChat {
     const isDocumentLike =
       isGoogleDocs || !!context?.isDocument || !!context?.isPage;
 
+    // --- Intent handling ---
+    let intent = "general";
+    if (action === "reply") {
+      intent = "email-reply";
+    } else if (action === "reply-with-data") {
+      intent = "email-reply";
+    } else if (action === "summarize") {
+      intent = isEmail ? "email-summary" : "document-summary";
+    }
+
+    // Store the intent BEFORE sending the message
+    this.store.set("chat.currentIntent", intent);
+    this.store.set("chat.lastUserIntent", intent);
+
+    console.log("[App] Setting intent for action:", action, "->", intent);
+
+    // --- Build query text ---
     let query = "";
 
     switch (action) {
@@ -1429,8 +1489,14 @@ class CompanyGPTChat {
       console.log("[App] Sending to chat controller:");
       console.log("  Query:", query);
       console.log("  Context:", context);
+      console.log("  Intent:", intent);
 
-      const response = await this.chatController.sendMessage(query, context);
+      // Pass the intent to the chat controller
+      const response = await this.chatController.sendMessage(
+        query,
+        context,
+        intent
+      );
 
       this.removeTypingIndicator(thinkingId);
 
@@ -1453,16 +1519,21 @@ class CompanyGPTChat {
       selection
     );
 
-    // Check if we have context
+    // Get context
     const context = this.contextManager?.getContextForMessage();
     if (!context) {
       this.showError("Bitte lade zuerst den Seitenkontext");
       return;
     }
 
-    // Check if it's Gmail
-    const isGmail = !!context?.isGmail || context?.sourceType === "gmail";
-    if (!isGmail) {
+    // Check if it's ANY email (not just Gmail)
+    const isEmail =
+      !!context?.isEmail ||
+      !!context?.isGmail ||
+      !!context?.isOutlook ||
+      context?.emailProvider;
+
+    if (!isEmail) {
       this.showError("Diese Aktion ist nur für E-Mails verfügbar.");
       return;
     }
