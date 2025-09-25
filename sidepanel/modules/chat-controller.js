@@ -244,17 +244,18 @@ export class ChatController {
       context?.isOutlook ||
       context?.emailProvider
     ) {
-      // If we have email context, check if user wants to reply
+      // Only return email-reply if user explicitly asks for email action
       if (
         lowerText.includes("beantworte") ||
         lowerText.includes("antwort") ||
         lowerText.includes("reply") ||
-        lowerText.includes("email")
+        lowerText.includes("email") ||
+        (lowerText.includes("schreibe") && lowerText.includes("mail"))
       ) {
         return "email-reply";
       }
-      // Even without explicit keywords, if it's email context, assume email-reply
-      return "email-reply";
+      // REMOVE the automatic email-reply fallback!
+      // Just fall through to general
     }
 
     // Keep your existing checks
@@ -266,7 +267,7 @@ export class ChatController {
       return "calendar-actions";
     }
 
-    return "general";
+    return "general"; // Default for everything else
   }
 
   getLastUserIntent() {
