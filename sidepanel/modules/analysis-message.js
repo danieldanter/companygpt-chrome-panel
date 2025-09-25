@@ -3,9 +3,10 @@
 export class AnalysisMessage {
   constructor(container) {
     this.container = container;
-    this.store = window.AppStore;
     this.currentMessageEl = null;
     this.abortController = null;
+    this.currentStep = 0;
+    this.stepElements = [];
   }
 
   /**
@@ -60,15 +61,126 @@ export class AnalysisMessage {
    * Show analysis step
    */
   showStep(step, totalSteps, text) {
-    this.currentMessageEl = this.createAnalysisMessage(
-      step,
-      totalSteps,
-      text,
-      "running"
-    );
-    this.container.appendChild(this.currentMessageEl);
-    this.scrollToBottom();
-    return this.currentMessageEl;
+    // Only create container on first step
+    if (step === 1) {
+      this.createStepsContainer(totalSteps);
+    }
+
+    const stepEl = this.stepElements[step - 1];
+    if (!stepEl) return;
+
+    // Update step to running state
+    stepEl.classList.remove("pending");
+    stepEl.classList.add("running");
+
+    // Update the icon to spinning
+    const iconEl = stepEl.querySelector(".analysis-icon");
+    if (iconEl) {
+      iconEl.innerHTML = this.getRunningIcon();
+    }
+
+    // Animate the step appearance
+    stepEl.style.opacity = "0";
+    stepEl.style.transform = "translateY(-10px)";
+    setTimeout(() => {
+      stepEl.style.opacity = "1";
+      stepEl.style.transform = "translateY(0)";
+    }, 50);
+
+    return stepEl;
+  }
+
+  createStepsContainer(totalSteps) {
+    const containerEl = document.createElement("div");
+    containerEl.className = "analysis-steps-container";
+    containerEl.dataset.temporary = "true";
+
+    // Create abort button at the top
+    const headerEl = document.createElement("div");
+    headerEl.className = "analysis-header";
+    headerEl.innerHTML = `
+      <span class="analysis-title">Datenspeicher-Analyse läuft...</span>
+      <button class="abort-button" data-action="abort">Abbrechen</button>
+    `;
+
+    containerEl.appendChild(headerEl);
+
+    // Create all steps but keep them pending
+    for (let i = 1; i <= totalSteps; i++) {
+      const stepEl = document.createElement("div");
+      stepEl.className = "analysis-step pending";
+      stepEl.dataset.step = i;
+      stepEl.innerHTML = `
+        <div class="step-content">
+          <span class="analysis-icon">${this.getPendingIcon()}</span>
+          <span class="step-text">Schritt ${i}/${totalSteps}: Warte...</span>
+        </div>
+        <div class="step-result" style="display: none;"></div>
+      `;
+
+      containerEl.appendChild(stepEl);
+      this.stepElements.push(stepEl);
+    }
+
+    this.container.appendChild(containerEl);
+    this.currentMessageEl = containerEl;
+
+    // Add abort handler
+    const abortBtn = containerEl.querySelector(".abort-button");
+    if (abortBtn) {
+      abortBtn.addEventListener("click", () => this.handleAbort());
+    }
+  }
+
+  /**
+   * Complete a step and update its appearance
+   */
+  completeStep(stepNumber, text, detail) {
+    const stepEl = this.stepElements[stepNumber - 1];
+    if (!stepEl) return;
+
+    // Update to completed state
+    stepEl.classList.remove("running");
+    stepEl.classList.add("complete");
+
+    // Update icon to checkmark
+    const iconEl = stepEl.querySelector(".analysis-icon");
+    if (iconEl) {
+      iconEl.innerHTML = this.getCompleteIcon();
+    }
+
+    // Update text
+    const textEl = stepEl.querySelector(".step-text");
+    if (textEl) {
+      textEl.textContent = text;
+    }
+
+    // Add detail if provided
+    if (detail) {
+      const resultDiv = stepEl.querySelector(".step-result");
+      if (resultDiv) {
+        resultDiv.innerHTML = `<div class="step-detail">${this.escapeHtml(
+          detail
+        )}</div>`;
+        resultDiv.style.display = "block";
+      }
+    }
+  }
+
+  getRunningIcon() {
+    return `
+      <svg class="icon-spinning" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 12a9 9 0 11-6.219-8.56" />
+      </svg>
+    `;
+  }
+
+  getPendingIcon() {
+    return `<span class="icon-pending">○</span>`;
+  }
+
+  getCompleteIcon() {
+    return `<span class="icon-complete">✓</span>`;
   }
 
   /**

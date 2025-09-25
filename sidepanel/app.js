@@ -3,6 +3,7 @@ import { ChatController } from "./modules/chat-controller.js";
 import { MessageRenderer } from "./modules/message-renderer.js";
 import { ContextManager } from "./modules/context-manager.js";
 import { DatenspeicherSelector } from "./modules/datenspeicher-selector.js";
+import { ProcessMessage } from "./modules/process-message.js";
 
 class CompanyGPTChat {
   constructor() {
@@ -13,6 +14,7 @@ class CompanyGPTChat {
     this.chatController = null;
     this.messageRenderer = null;
     this.contextManager = null;
+    this.processMessage = new ProcessMessage();
 
     // Cache UI element refs
     this.elements = {};
@@ -752,6 +754,15 @@ class CompanyGPTChat {
   }
 
   addMessage(content, role = "assistant") {
+    // Special handling for process messages
+    if (role === "process") {
+      const messageEl = this.processMessage.addToChat(
+        this.elements.messagesContainer,
+        content
+      );
+      this.scrollToBottom();
+      return messageEl;
+    }
     const messageEl = document.createElement("div");
     messageEl.className = `message ${role}`;
 
@@ -1512,7 +1523,6 @@ class CompanyGPTChat {
 
   // Add this method to your CompanyGPTChat class in app.js
   // Place it after the handleContextAction method
-
   async handleDatenspeicherReply(selection) {
     console.log(
       "[App] Datenspeicher selected for multi-step reply:",
@@ -1577,9 +1587,13 @@ class CompanyGPTChat {
         selection.folderName
       );
 
-      // Only show response if not aborted
-      if (response) {
-        // Add the final assistant message
+      // NEW: If process data is present, render a process card in the chat
+      if (response && response.processData) {
+        this.addMessage(response.processData, "process");
+      }
+
+      // Only show response if not aborted and content exists
+      if (response && response.content) {
         const messageId = this.startStreamingMessage();
         await this.streamText(messageId, response.content, 3);
       }

@@ -277,49 +277,46 @@ export class ChatController {
   async sendDatanspeicherReply(query, context, folderId, folderName) {
     console.log("[ChatController] Starting multi-step Datenspeicher reply");
 
-    // Initialize analysis message handler
     const messagesContainer = document.getElementById("chat-messages");
     this.analysisMessage = new AnalysisMessage(messagesContainer);
 
-    // Set up multi-step process in store
-    this.store.set("chat.multiStepProcess", {
-      active: true,
-      type: "email-datenspeicher-reply",
-      currentStep: 1,
-      totalSteps: 3,
-      canAbort: true,
-      abortController: new AbortController(),
-      steps: [
-        { step: 1, status: "running", result: null },
-        { step: 2, status: "pending", result: null },
-        { step: 3, status: "pending", result: null },
-      ],
-    });
-
-    this.multiStepAbortController = new AbortController();
-    this.analysisMessage.abortController = this.multiStepAbortController;
+    // Track process data for the collapsible card
+    const processData = {
+      id: `process-${Date.now()}`,
+      folderName: folderName,
+      steps: [],
+      timestamp: Date.now(),
+    };
 
     try {
-      // Check for abort after each step
-      const checkAbort = () => {
-        if (this.multiStepAbortController.signal.aborted) {
-          throw new Error("Aborted");
-        }
-      };
-
-      // STEP 1: Extract Query
+      // STEP 1: Show and start
       const step1El = this.analysisMessage.showStep(
         1,
         3,
         "Analysiere die Email..."
       );
-      checkAbort();
 
+      // Do the actual work
       const extractedQuery = await this.extractEmailQuery(context);
-      checkAbort();
 
-      this.store.set("chat.extractedQuery", extractedQuery);
+      // Optional: show a nice bubble within the step
       this.analysisMessage.showQueryBubble(step1El, extractedQuery);
+
+      // Complete step 1 with results
+      this.analysisMessage.completeStep(
+        1,
+        "Email analysiert",
+        `Suchanfrage: "${extractedQuery}"`
+      );
+
+      // Track process data
+      processData.steps.push({
+        text: "Email analysiert",
+        detail: `Suchanfrage: "${extractedQuery}"`,
+      });
+
+      // Small delay before next step for visual clarity
+      await new Promise((resolve) => setTimeout(resolve, 300));
 
       // STEP 2: RAG Search
       const step2El = this.analysisMessage.showStep(
@@ -327,53 +324,97 @@ export class ChatController {
         3,
         `Durchsuche ${folderName}...`
       );
-      checkAbort();
-
       const ragResults = await this.searchDatanspeicher(
         extractedQuery,
         folderId
       );
-      checkAbort();
 
-      this.store.set("chat.ragResults", ragResults);
       const entriesCount = Array.isArray(ragResults) ? ragResults.length : 1;
-      this.analysisMessage.showRAGResults(step2El, ragResults, entriesCount);
 
-      // STEP 3: Generate Reply
+      // Format the RAG results for display
+      let ragResultsPreview = "";
+      if (typeof ragResults === "string") {
+        ragResultsPreview =
+          ragResults.substring(0, 200) + (ragResults.length > 200 ? "..." : "");
+      } else if (Array.isArray(ragResults)) {
+        ragResultsPreview = ragResults
+          .slice(0, 2)
+          .map((item) =>
+            typeof item === "string"
+              ? item
+              : item.content || JSON.stringify(item)
+          )
+          .join("\n");
+      }
+
+      // Store the step with the actual data as detail
+      processData.steps.push({
+        text: `${entriesCount} relevante Einträge gefunden`,
+        detail: ragResultsPreview, // Store the actual content here!
+      });
+
+      // Store count at top level too
+      processData.entriesCount = entriesCount;
+
+      // Complete the step and show the results
+      this.analysisMessage.completeStep(
+        2,
+        `${entriesCount} relevante Einträge gefunden`,
+        ragResultsPreview // Pass the actual content to display
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      // STEP 3: Show and start
       const step3El = this.analysisMessage.showStep(
         3,
         3,
         "Erstelle Email-Antwort..."
       );
-      checkAbort();
 
+      // Generate reply
       const emailReply = await this.generateEmailReply(context, ragResults);
-      checkAbort();
 
-      // Update step 3 to complete
-      this.analysisMessage.updateStepResult(step3El, "", "complete");
+      // Complete step 3
+      this.analysisMessage.completeStep(3, "Antwort generiert", null);
 
-      // Remove analysis messages and show final result
+      // Track process data
+      processData.steps.push({
+        text: "Antwort generiert",
+        detail: null,
+      });
+
+      // Wait a moment before collapsing
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Remove the temporary analysis messages
       this.analysisMessage.removeAnalysisMessages();
 
-      // Return the final response
+      // Add the collapsible process message to chat (excluded from API payloads)
+      const processMessage = {
+        id: processData.id,
+        role: "process",
+        content: processData,
+        timestamp: Date.now(),
+        _isProcessMessage: true,
+        _processData: processData,
+      };
+
+      const currentMessages = this.store.get("chat.messages") || [];
+      this.store.set("chat.messages", [...currentMessages, processMessage]);
+
+      // Return BOTH the final content and the process data
       return {
         content: emailReply,
-        intent: "email-reply", // So action buttons appear
+        intent: "email-reply",
+        processData: processData,
       };
     } catch (error) {
       if (error.message === "Aborted") {
         console.log("[ChatController] Process aborted by user");
         return null;
       }
-
-      console.error("[ChatController] Multi-step process failed:", error);
-      this.analysisMessage.cleanup();
       throw error;
-    } finally {
-      // Reset multi-step process
-      this.store.set("chat.multiStepProcess.active", false);
-      this.multiStepAbortController = null;
     }
   }
 
@@ -544,15 +585,18 @@ export class ChatController {
       );
 
       // Build payload with the correct mode and data collections
+      // Around line 550 in sendMessage method, when building the payload:
       const chatPayload = {
         id: this.store.get("chat.sessionId"),
         folderId: this.store.get("chat.folderId"),
-        messages: messagesWithNewOne.map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-          references: msg.references || [],
-          sources: msg.sources || [],
-        })),
+        messages: messagesWithNewOne
+          .filter((msg) => !msg._isProcessMessage) // Filter out process messages!
+          .map((msg) => ({
+            role: msg.role,
+            content: msg.content,
+            references: msg.references || [],
+            sources: msg.sources || [],
+          })),
         model: this.model,
         name: "Neuer Chat",
         roleId: this.store.get("chat.roleId"),
