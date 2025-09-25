@@ -2305,3 +2305,31 @@ mark {
     background: rgba(255, 255, 255, 0.02);
   }
 }
+
+/* Reply Mode Styles */
+button.active-reply {
+  background: rgba(34, 197, 94, 0.1) !important;
+  border: 1px solid rgba(34, 197, 94, 0.5) !important;
+  color: var(--success) !important;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+  animation: pulseGreen 2s infinite;
+}
+
+.message-input.reply-mode {
+  border-color: rgba(34, 197, 94, 0.5) !important;
+  background: rgba(34, 197, 94, 0.02);
+}
+
+.input-container:has(.reply-mode) {
+  border-color: rgba(34, 197, 94, 0.5) !important;
+}
+
+@keyframes pulseGreen {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.1);
+  }
+}

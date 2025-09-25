@@ -259,36 +259,34 @@ class CompanyGPTChat {
 
     // Context action buttons - UPDATED for split button
     // Context action buttons - Updated for proper split button
+    // Handle context action buttons
     document.addEventListener("click", (e) => {
-      const button = e.target.closest(
+      // 1) Datenspeicher: reply-with-data
+      const dsButton = e.target.closest(
         '.context-action-btn[data-action="reply-with-data"]'
       );
-
-      if (button) {
+      if (dsButton) {
         e.preventDefault();
         e.stopPropagation();
-
-        const hasSelection = button.classList.contains("has-selection");
+        const hasSelection = dsButton.classList.contains("has-selection");
         const clickedElement = e.target;
-
-        // Determine which part was clicked
+        // Which part was clicked?
         const isDropdownClick = clickedElement.closest(".button-dropdown");
         const isMainClick = clickedElement.closest(".button-main");
-
         if (!hasSelection) {
-          // No selection - any click opens dropdown
+          // No selection → open selector
           if (this.datenspeicherSelector) {
             this.datenspeicherSelector.open();
           }
         } else {
-          // Has selection - split functionality
+          // Has selection → split behavior
           if (isDropdownClick) {
-            // Clicked dropdown arrow - open selector
+            // Open selector
             if (this.datenspeicherSelector) {
               this.datenspeicherSelector.open();
             }
           } else if (isMainClick) {
-            // Clicked main area - execute action with selected Datenspeicher
+            // Execute with selected Datenspeicher
             const selectedFolder =
               this.datenspeicherSelector?.getSelectedFolder();
             if (selectedFolder) {
@@ -302,11 +300,54 @@ class CompanyGPTChat {
         return;
       }
 
-      // Handle other context action buttons
+      // 2) Plain reply button (toggle context mode or call helper)
+      const replyButton = e.target.closest(
+        '.context-action-btn[data-action="reply"]'
+      );
+      if (replyButton) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof this.activateReplyMode === "function") {
+          // Prefer a dedicated helper if you have one
+          this.activateReplyMode(replyButton);
+        } else {
+          // Fallback: inline toggle behavior
+          const isActive = replyButton.classList.contains("context-active");
+          const contextInput = replyButton.parentElement.querySelector(
+            ".reply-context-input"
+          );
+          if (!isActive) {
+            replyButton.classList.add("context-active");
+            replyButton.querySelector("span").textContent =
+              "Kontext hinzufügen..."; // FIXED: removed backtick
+            if (contextInput) {
+              contextInput.style.display = "flex";
+              contextInput.querySelector("input")?.focus();
+            }
+          } else {
+            // Send normal reply without extra context
+            this.handleContextAction("reply");
+            // Reset UI
+            replyButton.classList.remove("context-active");
+            const span = replyButton.querySelector("span");
+            if (span) span.textContent = "Antworten"; // FIXED: safer null check
+            if (contextInput) {
+              contextInput.style.display = "none";
+              const input = contextInput.querySelector("input");
+              if (input) input.value = "";
+            }
+          }
+        }
+        return;
+      }
+
+      // 3) Other context action buttons (e.g., summarize)
       const otherButton = e.target.closest(".context-action-btn");
-      if (otherButton && otherButton.dataset.action !== "reply-with-data") {
+      if (otherButton) {
         const action = otherButton.dataset.action;
-        this.handleContextAction(action);
+        if (action !== "reply-with-data" && action !== "reply") {
+          this.handleContextAction(action);
+        }
       }
     });
 
@@ -342,6 +383,66 @@ class CompanyGPTChat {
           Chat gelöscht. Neuer Start! ✨
         </div>
       `;
+    }
+  }
+
+  activateReplyMode() {
+    console.log("[App] Activating reply mode");
+
+    // Mark that we're in reply mode
+    this.store.set("ui.replyMode", true);
+
+    // Add green glow to Antworten button
+    const replyBtn = document.querySelector('button[data-action="reply"]');
+    if (replyBtn) {
+      replyBtn.classList.add("active-reply");
+    }
+
+    // Change input placeholder and focus
+    if (this.elements.messageInput) {
+      this.elements.messageInput.placeholder =
+        "Stichworte eingeben (z.B. Sonntag 08:00-21:00, Preise)...";
+      this.elements.messageInput.focus();
+      this.elements.messageInput.classList.add("reply-mode");
+
+      // Add a data attribute to mark reply mode
+      this.elements.messageInput.dataset.replyMode = "true";
+    }
+
+    // Click outside to cancel
+    this.outsideClickHandler = (e) => {
+      if (
+        !e.target.closest(".input-container") &&
+        !e.target.closest('button[data-action="reply"]')
+      ) {
+        this.deactivateReplyMode();
+      }
+    };
+    setTimeout(() => {
+      document.addEventListener("click", this.outsideClickHandler);
+    }, 100);
+  }
+
+  deactivateReplyMode() {
+    console.log("[App] Deactivating reply mode");
+
+    this.store.set("ui.replyMode", false);
+
+    // Remove green glow
+    const replyBtn = document.querySelector('button[data-action="reply"]');
+    if (replyBtn) {
+      replyBtn.classList.remove("active-reply");
+    }
+
+    // Reset input
+    if (this.elements.messageInput) {
+      this.elements.messageInput.placeholder = "Nachricht an CompanyGPT";
+      this.elements.messageInput.classList.remove("reply-mode");
+      delete this.elements.messageInput.dataset.replyMode;
+    }
+
+    if (this.outsideClickHandler) {
+      document.removeEventListener("click", this.outsideClickHandler);
     }
   }
 
@@ -665,27 +766,147 @@ class CompanyGPTChat {
     await this.processSendMessage(message);
   }
 
-  async processSendMessage(message) {
-    console.log("[App] Processing message:", message);
+  async processSendMessage(inputText = null) {
+    const text = inputText || this.elements?.messageInput?.value?.trim();
+    if (!text) return;
 
-    // Add user message to UI immediately
-    this.addMessage(message, "user");
+    console.log("[App] User sending message:", text);
+
+    // Check Reply Mode (set elsewhere in the UI/store)
+    const isReplyMode = this.store.get("ui.replyMode") === true;
+    console.log("[App] Reply mode active?", isReplyMode);
+
+    // ===== Reply Mode: Turn user's keywords into an email reply =====
+    if (isReplyMode) {
+      console.log("[App] Processing as email reply with keywords");
+
+      // Deactivate reply mode first
+      if (typeof this.deactivateReplyMode === "function") {
+        this.deactivateReplyMode();
+      } else {
+        this.store.set("ui.replyMode", false);
+      }
+
+      // Clear the input if the user typed into the box
+      if (!inputText && this.elements?.messageInput) {
+        this.elements.messageInput.value = "";
+      }
+
+      // Require email context
+      const context = this.contextManager?.getContextForMessage();
+      const isEmailContext =
+        !!context?.isEmail ||
+        !!context?.isGmail ||
+        !!context?.isOutlook ||
+        !!context?.emailProvider;
+
+      if (!context || !isEmailContext) {
+        this.showError("Email-Kontext nicht verfügbar");
+        return;
+      }
+
+      // Build prompt that injects the user's keywords/focus
+      const originalEmailText =
+        context?.selectedText ||
+        context?.content ||
+        context?.mainContent ||
+        context?.emailBody ||
+        "";
+
+      const prompt = `Beantworte diese Email professionell und freundlich.
+  Verwende dabei folgende wichtige Informationen/Schlüsselwörter: ${text}
+
+  Original-Email:
+  ${originalEmailText}
+
+  Anweisungen:
+  - Beantworte nur die explizit gestellten Fragen der Original-Email
+  - Nutze ausschließlich die relevanten Informationen aus den angegebenen Schlüsselwörtern und dem Emailtext
+  - Sei freundlich und professionell
+  - Schreibe eine vollständige, kurze Email-Antwort (keine unnötigen Zusatzinfos)`;
+
+      // Show a lightweight UX message
+      this.addMessage(`Email-Antwort mit Infos: ${text}`, "user");
+
+      // Ensure chat is ready
+      if (!this.chatController || !this.chatController.isInitialized) {
+        console.log("[App] Initializing chat for reply");
+        try {
+          await this.initializeChat();
+        } catch (error) {
+          console.error("[App] Failed to initialize chat:", error);
+          this.showError("Chat konnte nicht initialisiert werden");
+          return;
+        }
+      }
+
+      // Set email-reply intent BEFORE sending
+      this.store.set("chat.lastUserIntent", "email-reply");
+      this.store.set("chat.currentIntent", "email-reply");
+
+      // Show thinking indicator
+      const thinkingId = this.showTypingIndicator();
+      try {
+        // Send with explicit email-reply intent
+        const response = await this.chatController.sendMessage(
+          prompt,
+          context,
+          "email-reply"
+        );
+
+        // Remove thinking indicator
+        this.removeTypingIndicator(thinkingId);
+
+        if (response && response._isError) {
+          this.addMessage(
+            response.content || "⚠️ Fehlerhafte Antwort vom Sprachmodell.",
+            "error"
+          );
+          return;
+        }
+
+        if (response && response.content) {
+          const messageId = this.startStreamingMessage();
+          await this.streamText(messageId, response.content, 3);
+        } else {
+          this.addMessage("⚠️ Keine Antwort erhalten.", "error");
+        }
+      } catch (error) {
+        console.error("[App] Failed to send email reply:", error);
+        this.removeTypingIndicator(thinkingId);
+        this.showError("Fehler beim Generieren der Email-Antwort");
+      }
+
+      return; // Exit early – do not continue with normal flow
+    }
+
+    // ===== Normal message flow =====
+    console.log("[App] Processing message:", text);
+
+    // Add user message to UI
+    this.addMessage(text, "user");
 
     // Show thinking indicator
     const thinkingId = this.showTypingIndicator();
 
     try {
-      // Get context if available
+      // Include context if present
       let context = null;
       if (this.contextManager && this.contextManager.hasContext()) {
         context = this.contextManager.getContextForMessage();
         console.log("[App] Including context with message");
       }
 
-      // Detect if this is an email reply request
+      // Detect intent only for email contexts
       let intent = null;
-      if (context?.isEmail) {
-        const lowerMessage = (message || "").toLowerCase();
+      const isEmailContext =
+        !!context?.isEmail ||
+        !!context?.isGmail ||
+        !!context?.isOutlook ||
+        !!context?.emailProvider;
+
+      if (isEmailContext) {
+        const lowerMessage = (text || "").toLowerCase();
         if (
           lowerMessage.includes("beantworte") ||
           lowerMessage.includes("antwort") ||
@@ -697,18 +918,28 @@ class CompanyGPTChat {
         }
       }
 
-      // Send to CompanyGPT API via ChatController (pass intent)
       console.log("[App] Sending to chat controller with intent:", intent);
       const response = await this.chatController.sendMessage(
-        message,
+        text,
         context,
         intent
       );
 
-      console.log("[App] Received response from chat controller");
-
       // Remove thinking indicator
       this.removeTypingIndicator(thinkingId);
+
+      if (response && response._isError) {
+        this.addMessage(
+          response.content || "⚠️ Fehlerhafte Antwort vom Sprachmodell.",
+          "error"
+        );
+        return;
+      }
+
+      if (!response || !response.content) {
+        this.addMessage("⚠️ Keine Antwort erhalten.", "error");
+        return;
+      }
 
       // Stream the response
       const messageId = this.startStreamingMessage();
@@ -1352,12 +1583,15 @@ class CompanyGPTChat {
   }
 
   showError(message) {
-    console.error("[App]", message);
+    // Add a fallback if message is undefined
+    const errorMessage = message || "Ein Fehler ist aufgetreten";
+
+    console.error("[App]", errorMessage);
 
     if (this.elements.messagesContainer) {
       const errorEl = document.createElement("div");
       errorEl.className = "message error";
-      errorEl.textContent = message;
+      errorEl.textContent = errorMessage;
       this.elements.messagesContainer.appendChild(errorEl);
       this.scrollToBottom();
     }
