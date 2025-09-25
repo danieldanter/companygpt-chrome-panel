@@ -38,6 +38,33 @@
     },
   };
 
+  async function clearAllAuthData() {
+    debug("[AuthService] Clearing all auth data...");
+
+    // Clear all stored auth data
+    await chrome.storage.local.remove([
+      "authState",
+      "lastKnownDomain",
+      "chatHistory",
+      "chatSessionId",
+      "companygpt-state",
+    ]);
+
+    // Clear cache
+    AuthState.cache = {
+      isAuthenticated: null,
+      user: null,
+      lastCheck: 0,
+      TTL: 30000,
+      checkInProgress: null,
+      activeDomain: null,
+      hasMultipleDomains: false,
+      availableDomains: [],
+    };
+
+    debug("[AuthService] All auth data cleared");
+  }
+
   // ============================================
   // CORE AUTH CHECK
   // ============================================
@@ -249,13 +276,14 @@
   // ============================================
   async function login() {
     debug("[AuthService] Opening CompanyGPT for login...");
-    clearCache();
+
+    // CLEAR OLD AUTH DATA BEFORE LOGIN
+    await clearAllAuthData();
 
     try {
-      // Prefer currently cached or recently stored domain info
+      // Rest of the existing login code stays the same...
       let domain = AuthState.cache.activeDomain || null;
 
-      // Try to read lastKnownDomain and/or prior authState from storage
       if (!domain) {
         const stored = await chrome.storage.local.get([
           "lastKnownDomain",

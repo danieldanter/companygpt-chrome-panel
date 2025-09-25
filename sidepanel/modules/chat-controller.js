@@ -192,10 +192,8 @@ export class ChatController {
     };
 
     const finalOptions = { ...defaultOptions, ...options };
-
     this.log("Making authenticated request:", url, finalOptions);
 
-    // Use background script to make the request
     const response = await chrome.runtime.sendMessage({
       type: "API_REQUEST",
       data: {
@@ -205,10 +203,25 @@ export class ChatController {
     });
 
     if (!response?.success) {
-      throw new Error(response?.error || "API request failed");
+      const error = response?.error || "API request failed";
+
+      // Check for server errors (5xx) OR permission errors (403)
+      if (
+        error.includes("500") ||
+        error.includes("502") ||
+        error.includes("503") ||
+        error.includes("403") ||
+        error.includes("ERR_BAD_REQUEST")
+      ) {
+        const serverError = new Error("SERVER_UNAVAILABLE");
+        serverError.isServerError = true;
+        serverError.originalError = error;
+        throw serverError;
+      }
+
+      throw new Error(error);
     }
 
-    // Convert response to resemble fetch response
     return {
       ok: true,
       json: async () => response.data,
@@ -496,7 +509,6 @@ export class ChatController {
       sources: [],
       _originalText: message,
       _context: context,
-      // _dataCollection intentionally not stored here since the new signature doesn't pass it directly
     };
 
     // Get current messages and add new one
@@ -516,7 +528,7 @@ export class ChatController {
         throw new Error("No domain configured");
       }
 
-      // Determine selected data collection from context or store (since param is removed)
+      // Determine selected data collection from context or store
       const selectedDataCollection =
         context?.selectedDataCollection ||
         this.store.get("chat.selectedDataCollection") ||
@@ -614,9 +626,37 @@ export class ChatController {
     } catch (error) {
       console.error("[ChatController] Send message failed:", error);
 
-      // Revert the failed user message
-      this.store.set("chat.messages", currentMessages);
+      // If the backend flagged this as a server-side availability issue,
+      // add a fallback assistant message instead of reverting the user message.
+      if (error.isServerError) {
+        console.log(
+          "[ChatController] Server is unavailable, returning fallback message"
+        );
 
+        const fallbackMessage = {
+          id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          role: "assistant",
+          content:
+            "⚠️ Fehlerhafte Antwort vom Sprachmodell. Der Server ist momentan nicht erreichbar. Bitte versuche es später erneut.",
+          timestamp: Date.now(),
+          references: [],
+          sources: [],
+          _isError: true,
+          _errorType: "server_unavailable",
+        };
+
+        const updatedMessages = [
+          ...this.store.get("chat.messages"),
+          fallbackMessage,
+        ];
+        this.store.set("chat.messages", updatedMessages);
+
+        // Return the fallback so the UI can display it
+        return fallbackMessage;
+      }
+
+      // For other errors, revert the failed user message
+      this.store.set("chat.messages", currentMessages);
       this.store.actions.showError(
         "Failed to send message: " + (error?.message || String(error))
       );
