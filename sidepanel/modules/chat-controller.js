@@ -429,63 +429,94 @@ export class ChatController {
 
   Beispiel: "Öffnungszeiten Sonntag UND Probetraining"
 
-  Email:
-  ${context.content || context.mainContent}
+    Email:
+    ${context.content || context.mainContent}
+    
+    Suchanfrage:`;
 
-  Suchanfrage:`;
-
-    // Use BASIC mode for extraction
-    const response = await this.sendMessage(prompt, null, null);
-
-    // Extract just the query from response
-    let query = response.content;
-    // Clean up the query (remove quotes, extra whitespace, etc)
-    query = query.replace(/^["']|["']$/g, "").trim();
-
-    return query;
+    const result = await this.makeIsolatedQuery(prompt, "BASIC");
+    return result.replace(/^["']|["']$/g, "").trim();
   }
 
-  // Add method to search Datenspeicher
+  async makeIsolatedQuery(content, mode = "BASIC", folderId = null) {
+    const domain =
+      this.store.get("auth.domain") || this.store.get("auth.activeDomain");
+
+    const payload = {
+      id: this.generateChatId(),
+      folderId: this.store.get("chat.folderId"),
+      messages: [
+        {
+          // Just ONE message, no history
+          role: "user",
+          content: content,
+          timestamp: Date.now(),
+          references: [],
+          sources: [],
+        },
+      ],
+      model: this.model,
+      name: "Isolated Query",
+      roleId: this.store.get("chat.roleId"),
+      selectedAssistantId: "",
+      selectedDataCollections: folderId ? [folderId] : [],
+      selectedFiles: [],
+      selectedMode: mode,
+      temperature: 0.2,
+    };
+
+    const response = await this.makeAuthenticatedRequest(
+      `https://${domain}.506.ai/api/qr/chat`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    );
+
+    const responseText = await response.text();
+    try {
+      const jsonResponse = JSON.parse(responseText);
+      return jsonResponse.content || jsonResponse.message || responseText;
+    } catch {
+      return responseText;
+    }
+  }
+
   async searchDatanspeicher(query, folderId) {
     console.log("[ChatController] Searching Datenspeicher with query:", query);
+    console.log("[ChatController] Using folder ID:", folderId);
 
-    // Use QA mode with the extracted query
-    const response = await this.sendMessage(query, null, folderId);
-
-    return response.content;
+    return await this.makeIsolatedQuery(query, "QA", folderId);
   }
 
   // Add method to generate email reply
   async generateEmailReply(originalContext, ragResults) {
-    console.log("[ChatController] Generating email reply");
-
     const prompt = `Schreibe eine professionelle und freundliche Email-Antwort.
 
-  GEFUNDENE INFORMATIONEN:
-  ${ragResults}
+    GEFUNDENE INFORMATIONEN:
+    ${ragResults}
 
-  ORIGINALE EMAIL:
-  ${originalContext.content || originalContext.mainContent}
+    ORIGINALE EMAIL:
+    ${originalContext.content || originalContext.mainContent}
 
-  Anweisungen:
-  - Beantworte alle Fragen vollständig mit den gefundenen Informationen
-  - Sei freundlich und professionell
-  - Verwende die korrekte Anrede wenn der Name bekannt ist
-  - Schließe mit einem freundlichen Gruß
-  - Formatiere als komplette Email-Antwort
+    Anweisungen:
+    - Beantworte alle Fragen vollständig mit den gefundenen Informationen
+    - Sei freundlich und professionell
+    - Verwende die korrekte Anrede wenn der Name bekannt ist
+    - Schließe mit einem freundlichen Gruß
+    - Formatiere als komplette Email-Antwort
 
-  Email-Antwort:`;
+    Email-Antwort:`;
 
-    // Use BASIC mode for generation
-    const response = await this.sendMessage(prompt, null, null);
-
-    return response.content;
+    return await this.makeIsolatedQuery(prompt, "BASIC");
   }
 
   /**
    * Send a message
    */
   // In chat-controller.js
+  // In chat-controller.js, replace the entire sendMessage method (starts around line 490)
+
   async sendMessage(message, context = null, explicitIntent = null) {
     console.log("[ChatController] === SENDING MESSAGE ===");
     console.log("[ChatController] Text:", message);
@@ -569,9 +600,10 @@ export class ChatController {
         throw new Error("No domain configured");
       }
 
+      // ===== FIX STARTS HERE =====
       // Determine selected data collection from context or store
       const selectedDataCollection =
-        context?.selectedDataCollection ||
+        context?.selectedDataCollection || // Check if passed in context
         this.store.get("chat.selectedDataCollection") ||
         null;
 
@@ -580,12 +612,16 @@ export class ChatController {
 
       console.log("[ChatController] Using mode:", mode);
       console.log(
-        "[ChatController] Data collections:",
+        "[ChatController] Selected data collection:",
+        selectedDataCollection
+      );
+      console.log(
+        "[ChatController] Data collections array:",
         selectedDataCollection ? [selectedDataCollection] : []
       );
+      // ===== FIX ENDS HERE =====
 
       // Build payload with the correct mode and data collections
-      // Around line 550 in sendMessage method, when building the payload:
       const chatPayload = {
         id: this.store.get("chat.sessionId"),
         folderId: this.store.get("chat.folderId"),
@@ -607,8 +643,6 @@ export class ChatController {
         selectedFiles: [],
         selectedMode: mode, // Dynamic mode based on Datenspeicher usage
         temperature: 0.2,
-        // optional: you could include intent here if your backend supports it
-        // intent,
       };
 
       console.log("[ChatController] === PAYLOAD DEBUG ===");
@@ -709,7 +743,6 @@ export class ChatController {
       this.store.set("chat.isStreaming", false);
     }
   }
-
   /**
    * Clear chat history
    */

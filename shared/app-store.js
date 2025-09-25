@@ -121,7 +121,7 @@
       "auth.availableDomains",
       "auth.user",
       "chat.sessionId",
-      "chat.messages", // Last 50 messages only
+      //"chat.messages", // Last 50 messages only
       "settings", // All settings
       "ui.useContext",
     ],

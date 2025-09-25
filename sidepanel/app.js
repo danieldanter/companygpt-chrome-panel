@@ -1536,25 +1536,21 @@ class CompanyGPTChat {
       return;
     }
 
-    // Check if it's ANY email (not just Gmail)
     const isEmail =
       !!context?.isEmail ||
       !!context?.isGmail ||
       !!context?.isOutlook ||
       context?.emailProvider;
-
     if (!isEmail) {
       this.showError("Diese Aktion ist nur für E-Mails verfügbar.");
       return;
     }
 
-    // Check if authenticated
     if (!this.store.get("auth.isAuthenticated")) {
       this.showError("Bitte melde dich erst an");
       return;
     }
 
-    // Ensure chat controller is initialized
     if (!this.chatController || !this.chatController.isInitialized) {
       console.log("[App] Chat controller not ready, initializing...");
       try {
@@ -1565,21 +1561,34 @@ class CompanyGPTChat {
       }
     }
 
-    // Build initial query message
     const query = `Bitte beantworte mir diese Email und nutze dabei relevante Informationen aus dem Datenspeicher "${selection.folderName}".`;
 
     try {
-      // Clear input field
       if (this.elements?.messageInput) {
         this.elements.messageInput.value = "";
       }
 
-      // Add user message to chat
+      // Add user message to chat UI and store
       this.addMessage(query, "user");
+
+      // IMPORTANT: Also add to store's chat messages
+      const userMessage = {
+        id: `msg-${Date.now()}-user`,
+        role: "user",
+        content: query,
+        timestamp: Date.now(),
+        _context: context,
+        _datenspeicherRequest: true,
+        _folderId: selection.folderId,
+        _folderName: selection.folderName,
+      };
+
+      const currentMessages = this.store.get("chat.messages") || [];
+      this.store.set("chat.messages", [...currentMessages, userMessage]);
 
       console.log("[App] Starting multi-step Datenspeicher process");
 
-      // Use the new multi-step method
+      // Use the multi-step method
       const response = await this.chatController.sendDatanspeicherReply(
         query,
         context,
@@ -1587,13 +1596,27 @@ class CompanyGPTChat {
         selection.folderName
       );
 
-      // NEW: If process data is present, render a process card in the chat
+      // Show process card if present
       if (response && response.processData) {
         this.addMessage(response.processData, "process");
       }
 
       // Only show response if not aborted and content exists
       if (response && response.content) {
+        // IMPORTANT: Add assistant response to store
+        const assistantMessage = {
+          id: `msg-${Date.now()}-assistant`,
+          role: "assistant",
+          content: response.content,
+          timestamp: Date.now(),
+          _fromDatanspeicher: true,
+          _folderId: selection.folderId,
+        };
+
+        const updatedMessages = this.store.get("chat.messages") || [];
+        this.store.set("chat.messages", [...updatedMessages, assistantMessage]);
+
+        // Stream the response in UI
         const messageId = this.startStreamingMessage();
         await this.streamText(messageId, response.content, 3);
       }
