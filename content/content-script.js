@@ -550,7 +550,7 @@
         };
       }
     }
-
+    // In extractContent method around line 140
     async extractContent(options = {}) {
       this.extractionCount++;
       const startTime = performance.now();
@@ -558,8 +558,9 @@
         `[ContentExtractor] Starting extraction #${this.extractionCount}`
       );
 
+      // Base result
       let result = {
-        url: this.url,
+        url: window.location.href, // Use current window URL
         title: document.title,
         hostname: this.hostname,
         siteType: this.siteConfig.type,
@@ -570,6 +571,12 @@
         metadata: {},
       };
 
+      // If we're mid-login redirect (e.g., OAuth), wait briefly and then capture the final URL
+      if (result.url.includes("?code=") && result.url.includes("/login/")) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        result.url = window.location.href; // Capture the post-redirect URL
+      }
+
       try {
         // Route to appropriate extractor
         switch (this.siteConfig.type) {
@@ -579,7 +586,6 @@
 
           case "gmail":
           case "outlook":
-            // Use EmailHandler for both email providers
             if (this.emailHandler) {
               const emailData = this.emailHandler.extract();
               const formatted = this.emailHandler.formatContent(emailData);
@@ -597,7 +603,6 @@
                 },
               };
             } else {
-              // Fallback to basic extraction
               result = { ...result, ...this.extractGeneric() };
             }
             break;
@@ -617,7 +622,7 @@
         result.success = true;
       } catch (error) {
         console.error("[ContentExtractor] Extraction error:", error);
-        result.error = error.message;
+        result.error = error?.message || String(error);
       }
 
       const extractionTime = performance.now() - startTime;

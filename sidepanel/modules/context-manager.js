@@ -15,6 +15,8 @@ export class ContextManager {
     this.contextText = null;
     this.clearButton = null;
 
+    this.pageChangeDebounce = null;
+
     // Setup state sync
     this.setupStateSync();
 
@@ -123,11 +125,21 @@ export class ContextManager {
   }
 
   onPageChange(newUrl) {
-    // Reset context when page changes
-    this.clearContext();
+    // Clear any pending debounced call
+    clearTimeout(this.pageChangeDebounce);
 
-    // Show subtle notification that context is available
-    this.showContextAvailable();
+    // Ignore OAuth redirects and login URLs
+    if (newUrl.includes("/login/") || newUrl.includes("?code=")) {
+      console.log("[ContextManager] Ignoring OAuth redirect URL");
+      return;
+    }
+
+    this.pageChangeDebounce = setTimeout(() => {
+      // Reset context when page changes
+      this.clearContext();
+      // Show subtle notification that context is available
+      this.showContextAvailable();
+    }, 1000); // Wait 1 second to ensure page is stable
   }
 
   showContextAvailable() {
