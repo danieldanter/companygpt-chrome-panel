@@ -153,6 +153,14 @@ class CompanyGPTChat {
       this.setActiveButton("btnChat");
     });
 
+    this.elements.btnUpload = document.getElementById("btn-upload");
+    this.elements.viewUpload = document.getElementById("view-upload");
+
+    this.elements.btnUpload?.addEventListener("click", () => {
+      this.showView("upload");
+      this.setActiveButton("btnUpload");
+    });
+
     this.elements.btnSettings?.addEventListener("click", () => {
       this.showView("settings");
       this.setActiveButton("btnSettings");
@@ -206,6 +214,12 @@ class CompanyGPTChat {
     const handleTabChangeDebounced = async (tabId, url) => {
       clearTimeout(tabChangeTimeout);
 
+      // Ignore OAuth redirects
+      if (url && (url.includes("/login/") || url.includes("?code="))) {
+        console.log("[App] Ignoring OAuth redirect URL:", url);
+        return;
+      }
+
       tabChangeTimeout = setTimeout(async () => {
         if (url === lastProcessedUrl) {
           console.log("[App] Skipping duplicate tab change for:", url);
@@ -220,7 +234,7 @@ class CompanyGPTChat {
             await this.contextManager.loadPageContext();
           }
         }
-      }, 300);
+      }, 1000); // Increase delay to 1 second
     };
 
     // Listen for tab activation
@@ -447,8 +461,9 @@ class CompanyGPTChat {
   }
 
   setActiveButton(buttonName) {
-    // Remove active class from all buttons
+    // Remove active class from ALL buttons
     this.elements.btnChat?.classList.remove("active");
+    this.elements.btnUpload?.classList.remove("active");
     this.elements.btnSettings?.classList.remove("active");
 
     // Add active class to selected button
@@ -456,15 +471,31 @@ class CompanyGPTChat {
   }
 
   showView(which) {
-    const isChat = which === "chat";
+    // Hide all views
+    this.elements.viewChat?.style.setProperty("display", "none");
+    this.elements.viewUpload?.style.setProperty("display", "none");
+    this.elements.viewSettings?.style.setProperty("display", "none");
 
-    if (isChat) {
-      this.elements.viewChat?.style.removeProperty("display");
-      this.elements.viewSettings?.style.setProperty("display", "none");
-    } else {
-      this.elements.viewChat?.style.setProperty("display", "none");
-      this.elements.viewSettings?.style.removeProperty("display");
+    // Hide input area for non-chat views
+    const inputArea = document.querySelector(".input-area");
+
+    switch (which) {
+      case "chat":
+        this.elements.viewChat?.style.removeProperty("display");
+        if (inputArea) inputArea.style.display = "flex"; // Show input area for chat
+        break;
+      case "upload":
+        this.elements.viewUpload?.style.removeProperty("display");
+        if (inputArea) inputArea.style.display = "none"; // Hide input area for upload
+        break;
+      case "settings":
+        this.elements.viewSettings?.style.removeProperty("display");
+        if (inputArea) inputArea.style.display = "none"; // Hide input area for settings
+        break;
     }
+
+    // Store current view
+    this.store.set("ui.activeView", which);
   }
 
   showLoginOverlay(detectedDomain = null) {

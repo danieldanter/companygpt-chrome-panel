@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>CompanyGPT Chat</title>
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="upload.css" />
   </head>
   <body>
     <div class="sidepanel">
@@ -30,7 +31,21 @@
               />
             </svg>
           </button>
-
+          <!-- NEW: Upload icon -->
+          <button class="icon-btn" id="btn-upload" title="Quick Upload">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+          </button>
           <!-- Settings icon (gear) -->
           <button class="icon-btn" id="btn-settings" title="Einstellungen">
             <svg
@@ -48,7 +63,6 @@
             </svg>
           </button>
 
-          <!-- Close icon -->
           <!-- Trash/Clear chat icon -->
           <button class="icon-btn" id="btn-clear-chat" title="Chat löschen">
             <svg
@@ -102,6 +116,140 @@
           </div>
         </div>
       </main>
+
+      <!-- Upload View (hidden initially) -->
+      <!-- Upload View (hidden initially) -->
+      <div class="upload-container" id="view-upload" style="display: none">
+        <!-- Common fields at top -->
+        <div class="upload-form">
+          <div class="upload-field">
+            <label for="upload-filename">Dateiname</label>
+            <input
+              type="text"
+              id="upload-filename"
+              placeholder="aufnahme-2025-01-01"
+              class="upload-input"
+            />
+          </div>
+
+          <div class="upload-field">
+            <label for="upload-folder">Datenspeicher wählen</label>
+            <button id="upload-folder-select" class="upload-select">
+              <span id="upload-folder-text">Datenspeicher auswählen</span>
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Tab content in the middle -->
+        <div class="upload-content">
+          <!-- Audio tab content -->
+          <div class="tab-content active" data-content="audio">
+            <div class="audio-recorder">
+              <button class="record-button" id="btn-record">
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                </svg>
+                <span>Aufnahme starten</span>
+              </button>
+              <div
+                class="recording-time"
+                id="recording-time"
+                style="display: none"
+              >
+                00:00
+              </div>
+            </div>
+          </div>
+
+          <!-- URL tab content (hidden) -->
+          <div class="tab-content" data-content="url" style="display: none">
+            <div class="url-crawler">
+              <input
+                type="url"
+                placeholder="https://example.com"
+                class="upload-input"
+                id="url-input"
+              />
+              <button class="upload-button">URL crawlen</button>
+            </div>
+          </div>
+
+          <!-- Screen tab content (hidden) -->
+          <div class="tab-content" data-content="screen" style="display: none">
+            <div class="screen-recorder">
+              <button class="record-button">Bildschirmaufnahme starten</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Upload tabs at bottom -->
+        <div class="upload-tabs">
+          <button class="upload-tab active" data-tab="audio">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              <line x1="12" y1="19" x2="12" y2="23" />
+              <line x1="8" y1="23" x2="16" y2="23" />
+            </svg>
+            <span>Audio</span>
+          </button>
+          <button class="upload-tab" data-tab="url">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"
+              />
+              <path
+                d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
+              />
+            </svg>
+            <span>URL</span>
+          </button>
+          <button class="upload-tab" data-tab="screen">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+            <span>Screen</span>
+          </button>
+        </div>
+      </div>
 
       <!-- Settings View (hidden) -->
       <div class="settings-container" id="view-settings" style="display: none">
