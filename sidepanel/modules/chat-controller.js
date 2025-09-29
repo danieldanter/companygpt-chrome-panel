@@ -291,6 +291,26 @@ export class ChatController {
       context = this.store.get("context");
     }
 
+    // FIRST: Check if we have a preserved intent from Datenspeicher or explicit action
+    const preservedIntent = this.store.get("chat.currentIntent");
+
+    // If we're in an email context and have a preserved email-reply intent, keep it
+    if (preservedIntent === "email-reply" && context) {
+      const isEmailContext =
+        context?.isEmail ||
+        context?.isGmail ||
+        context?.isOutlook ||
+        context?.emailProvider;
+
+      if (isEmailContext) {
+        console.log(
+          "[ChatController] Preserving email-reply intent for email context"
+        );
+        return "email-reply";
+      }
+    }
+
+    // --- Rest of existing detectIntent logic ---
     const lowerText = text?.toLowerCase() || "";
 
     // Check for ANY email context (Gmail, Outlook, or generic email)
@@ -310,11 +330,10 @@ export class ChatController {
       ) {
         return "email-reply";
       }
-      // REMOVE the automatic email-reply fallback!
-      // Just fall through to general
+      // No automatic fallback to email-reply — fall through
     }
 
-    // Keep your existing checks
+    // Other contexts
     if (context?.isGoogleDocs || context?.sourceType === "docs") {
       return "doc-actions";
     }
@@ -331,8 +350,25 @@ export class ChatController {
   }
 
   // Add new method for multi-step Datenspeicher reply
-  async sendDatanspeicherReply(query, context, folderId, folderName) {
+  async sendDatanspeicherReply(
+    query,
+    context,
+    folderId,
+    folderName,
+    explicitIntent = null
+  ) {
     console.log("[ChatController] Starting multi-step Datenspeicher reply");
+    console.log("[ChatController] Explicit intent:", explicitIntent);
+
+    // Preserve the intent throughout the process
+    const originalIntent =
+      explicitIntent || this.store.get("chat.lastUserIntent");
+
+    // Ensure intent stays set
+    if (originalIntent) {
+      this.store.set("chat.currentIntent", originalIntent);
+      this.store.set("chat.lastUserIntent", originalIntent);
+    }
 
     const messagesContainer = document.getElementById("chat-messages");
     this.analysisMessage = new AnalysisMessage(messagesContainer);
@@ -407,7 +443,7 @@ export class ChatController {
       // Store the step with the actual data as detail
       processData.steps.push({
         text: `${entriesCount} relevante Einträge gefunden`,
-        detail: ragResultsPreview, // Store the actual content here!
+        detail: ragResultsPreview,
       });
 
       // Store count at top level too
@@ -417,7 +453,7 @@ export class ChatController {
       this.analysisMessage.completeStep(
         2,
         `${entriesCount} relevante Einträge gefunden`,
-        ragResultsPreview // Pass the actual content to display
+        ragResultsPreview
       );
 
       await new Promise((resolve) => setTimeout(resolve, 300));
@@ -460,10 +496,10 @@ export class ChatController {
       const currentMessages = this.store.get("chat.messages") || [];
       this.store.set("chat.messages", [...currentMessages, processMessage]);
 
-      // Return BOTH the final content and the process data
+      // IMPORTANT: Return with preserved intent
       return {
         content: emailReply,
-        intent: "email-reply",
+        intent: originalIntent || "email-reply",
         processData: processData,
       };
     } catch (error) {

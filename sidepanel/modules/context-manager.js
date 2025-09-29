@@ -1,4 +1,5 @@
 // sidepanel/modules/context-manager.js - CLEANED VERSION
+import { debounce } from "./utils.js";
 export class ContextManager {
   constructor(app) {
     this.app = app;
@@ -35,10 +36,21 @@ export class ContextManager {
       }
     });
 
+    // Create debounced version of loadPageContext
+    // This will wait 1 second after the last call before executing
+    this.debouncedLoadContext = debounce(() => {
+      this.loadPageContext();
+    }, 1000);
+
+    // Create debounced version of context updates
+    // This will wait 500ms for rapid updates to finish
+    this.debouncedContextUpdate = debounce((context) => {
+      this.store.actions.setContext(context);
+    }, 500);
+
     // Initialize everything
     this.init();
   }
-
   setupStateSync() {
     console.log("[ContextManager] Setting up state sync...");
 
@@ -95,22 +107,37 @@ export class ContextManager {
   async monitorPageChanges() {
     let lastCheckedUrl = null;
 
-    // Check for URL changes every 2 seconds
     setInterval(async () => {
       const currentUrl = await this.getCurrentUrl();
 
-      // ✅ Only trigger if URL actually changed
       if (currentUrl && currentUrl !== lastCheckedUrl) {
         lastCheckedUrl = currentUrl;
         const contextUrl = this.store.get("context.url");
 
         if (contextUrl && currentUrl !== contextUrl) {
           console.log("[ContextManager] Page changed:", currentUrl);
-          this.onPageChange(currentUrl);
+
+          // USE DEBOUNCED VERSION INSTEAD
+          // OLD: this.onPageChange(currentUrl);
+          this.debouncedOnPageChange(currentUrl); // NEW
         }
       }
     }, 2000);
   }
+
+  // Add debounced version of onPageChange
+  debouncedOnPageChange = debounce((newUrl) => {
+    // Ignore OAuth redirects and login URLs
+    if (newUrl.includes("/login/") || newUrl.includes("?code=")) {
+      console.log("[ContextManager] Ignoring OAuth redirect URL");
+      return;
+    }
+
+    // Reset context when page changes
+    this.clearContext();
+    // Show subtle notification that context is available
+    this.showContextAvailable();
+  }, 1000); // Wait 1 second after URL stops changing
 
   async getCurrentUrl() {
     try {
@@ -526,7 +553,7 @@ export class ContextManager {
       method: processedContext.extractionMethod,
       contentLength: processedContext.mainContent.length,
     });
-
+    this.debouncedContextUpdate(processedContext);
     return processedContext; // Make sure you have this return statement
   }
 

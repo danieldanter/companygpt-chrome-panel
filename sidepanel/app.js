@@ -4,6 +4,7 @@ import { MessageRenderer } from "./modules/message-renderer.js";
 import { ContextManager } from "./modules/context-manager.js";
 import { DatenspeicherSelector } from "./modules/datenspeicher-selector.js";
 import { ProcessMessage } from "./modules/process-message.js";
+import { debounce } from "./modules/utils.js"; // ADD THIS LINE!
 
 class CompanyGPTChat {
   constructor() {
@@ -183,10 +184,27 @@ class CompanyGPTChat {
       }
     });
 
-    // Auto-resize textarea
+    // --- Typing indicators (debounced) ---
+    this.showUserTyping = debounce(() => {
+      // Could send typing status to backend
+      console.log("[App] User is typing...");
+      this.store.set("chat.userTyping", true);
+    }, 300);
+
+    this.hideUserTyping = debounce(() => {
+      console.log("[App] User stopped typing");
+      this.store.set("chat.userTyping", false);
+    }, 1000);
+
+    // Auto-resize textarea with debounced typing indicators
     this.elements.messageInput?.addEventListener("input", (e) => {
+      // Immediate resize (keep responsive)
       e.target.style.height = "auto";
       e.target.style.height = Math.min(e.target.scrollHeight, 100) + "px";
+
+      // Debounced typing indicators
+      this.showUserTyping();
+      this.hideUserTyping();
     });
 
     // Listen for messages from background
@@ -230,11 +248,12 @@ class CompanyGPTChat {
         console.log("[App] Processing tab change:", url);
 
         if (this.contextManager) {
-          if (!url.startsWith("chrome://") && !url.startsWith("about:")) {
-            await this.contextManager.loadPageContext();
+          if (!url?.startsWith("chrome://") && !url?.startsWith("about:")) {
+            // Use the debounced loader on the ContextManager
+            this.contextManager.debouncedLoadContext();
           }
         }
-      }, 1000); // Increase delay to 1 second
+      }, 1000); // 1 second delay
     };
 
     // Listen for tab activation
@@ -268,12 +287,7 @@ class CompanyGPTChat {
       }
     });
 
-    // Context action buttons — UPDATED
-    // In your setupEventListeners method in app.js, replace the context action buttons listener with this:
-
-    // Context action buttons - UPDATED for split button
-    // Context action buttons - Updated for proper split button
-    // Handle context action buttons
+    // Context action buttons — UPDATED for split button & safe handling
     document.addEventListener("click", (e) => {
       // 1) Datenspeicher: reply-with-data
       const dsButton = e.target.closest(
@@ -284,23 +298,18 @@ class CompanyGPTChat {
         e.stopPropagation();
         const hasSelection = dsButton.classList.contains("has-selection");
         const clickedElement = e.target;
-        // Which part was clicked?
         const isDropdownClick = clickedElement.closest(".button-dropdown");
         const isMainClick = clickedElement.closest(".button-main");
         if (!hasSelection) {
-          // No selection → open selector
           if (this.datenspeicherSelector) {
             this.datenspeicherSelector.open();
           }
         } else {
-          // Has selection → split behavior
           if (isDropdownClick) {
-            // Open selector
             if (this.datenspeicherSelector) {
               this.datenspeicherSelector.open();
             }
           } else if (isMainClick) {
-            // Execute with selected Datenspeicher
             const selectedFolder =
               this.datenspeicherSelector?.getSelectedFolder();
             if (selectedFolder) {
@@ -322,29 +331,25 @@ class CompanyGPTChat {
         e.preventDefault();
         e.stopPropagation();
         if (typeof this.activateReplyMode === "function") {
-          // Prefer a dedicated helper if you have one
           this.activateReplyMode(replyButton);
         } else {
-          // Fallback: inline toggle behavior
           const isActive = replyButton.classList.contains("context-active");
           const contextInput = replyButton.parentElement.querySelector(
             ".reply-context-input"
           );
           if (!isActive) {
             replyButton.classList.add("context-active");
-            replyButton.querySelector("span").textContent =
-              "Kontext hinzufügen..."; // FIXED: removed backtick
+            const spanLabel = replyButton.querySelector("span");
+            if (spanLabel) spanLabel.textContent = "Kontext hinzufügen...";
             if (contextInput) {
               contextInput.style.display = "flex";
               contextInput.querySelector("input")?.focus();
             }
           } else {
-            // Send normal reply without extra context
             this.handleContextAction("reply");
-            // Reset UI
             replyButton.classList.remove("context-active");
             const span = replyButton.querySelector("span");
-            if (span) span.textContent = "Antworten"; // FIXED: safer null check
+            if (span) span.textContent = "Antworten";
             if (contextInput) {
               contextInput.style.display = "none";
               const input = contextInput.querySelector("input");
@@ -807,6 +812,13 @@ class CompanyGPTChat {
     const isReplyMode = this.store.get("ui.replyMode") === true;
     console.log("[App] Reply mode active?", isReplyMode);
 
+    // Clear any preserved intent from previous operations
+    // UNLESS this is a reply mode activation / flow
+    if (!isReplyMode) {
+      this.store.set("chat.currentIntent", null);
+      console.log("[App] Cleared preserved intent for new user message");
+    }
+
     // ===== Reply Mode: Turn user's keywords into an email reply =====
     if (isReplyMode) {
       console.log("[App] Processing as email reply with keywords");
@@ -1097,7 +1109,10 @@ class CompanyGPTChat {
 
     // Ensure scroll after adding message
     requestAnimationFrame(() => {
-      this.scrollToBottom();
+      const chatContainer = document.getElementById("view-chat");
+      if (chatContainer) {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+      }
     });
   }
 
@@ -1286,45 +1301,68 @@ class CompanyGPTChat {
     tempDiv.innerHTML = finalHTML;
     const plainText = tempDiv.textContent || tempDiv.innerText || "";
 
+    // Helper: smooth scroll during streaming
+    const scrollDuringStream = () => {
+      const chatContainer = document.getElementById("view-chat");
+      if (chatContainer) {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+      } else if (typeof this.scrollToBottom === "function") {
+        this.scrollToBottom();
+      }
+    };
+
     // Stream out the text
     let currentText = "";
     for (let i = 0; i < plainText.length; i++) {
       currentText += plainText[i];
-
       messageEl.innerHTML = `${currentText.replace(
         /\n/g,
         "<br>"
       )}<span class="streaming-cursor">▊</span>`;
 
-      // Scroll during streaming
-      this.scrollToBottom();
+      // Scroll every 10 characters during streaming
+      if (i % 10 === 0) {
+        scrollDuringStream();
+      }
 
       await new Promise((resolve) => setTimeout(resolve, speed));
     }
 
-    // Replace with final rendered HTML
+    // After streaming completes and buttons are added
     messageEl.className = "message assistant";
     messageEl.innerHTML = finalHTML;
 
-    // === New: read intent from store and show buttons only for email-reply ===
-    const intent = this.store.get("chat.lastUserIntent");
-    console.log("[App] Stream complete, intent from store:", intent);
+    const intent =
+      this.store.get("chat.lastUserIntent") ||
+      this.store.get("chat.currentIntent");
 
-    if (intent === "email-reply") {
-      console.log("[App] Adding email action buttons");
+    console.log("[App] Stream complete, checking intent:", intent);
+
+    // Also check if the last user message was a Datenspeicher request for email
+    const messages = this.store.get("chat.messages") || [];
+    const lastUserMessage = messages.filter((m) => m.role === "user").pop();
+    const wasEmailDatanspeicher =
+      lastUserMessage?._datenspeicherRequest &&
+      (lastUserMessage?._originalIntent === "email-reply" ||
+        this.store.get("context.isEmail"));
+
+    // ... add buttons logic ...
+    if (intent === "email-reply" || wasEmailDatanspeicher) {
+      console.log(
+        "[App] Adding email action buttons (intent or Datenspeicher email detected)"
+      );
       this.addEmailActionButtons(messageEl, content);
     }
 
-    // Ensure we end scrolled to bottom
-    this.scrollToBottom(); // Immediate
+    // IMPORTANT: Clear the intent after use!
+    // Only preserve it during the operation, not forever
+    this.store.set("chat.currentIntent", null);
+    console.log("[App] Cleared current intent after streaming");
 
-    // After DOM paints, scroll again
+    // Final scroll after streaming complete
     requestAnimationFrame(() => {
-      this.scrollToBottom();
-      // Final fallback after UI settles
-      setTimeout(() => {
-        this.scrollToBottom();
-      }, 250);
+      scrollDuringStream();
+      setTimeout(scrollDuringStream, 250);
     });
   }
 
@@ -1563,7 +1601,16 @@ class CompanyGPTChat {
     `;
 
     this.elements.messagesContainer?.appendChild(typingEl);
-    this.scrollToBottom();
+
+    // Scroll to show the indicator
+    const chatContainer = document.getElementById("view-chat");
+    if (chatContainer) {
+      requestAnimationFrame(() => {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+      });
+    } else {
+      this.scrollToBottom?.();
+    }
 
     return typingEl.id;
   }
@@ -1573,16 +1620,17 @@ class CompanyGPTChat {
   }
 
   scrollToBottom() {
-    if (this.elements.messagesContainer) {
+    // Get the CORRECT scrollable container
+    const chatContainer = document.getElementById("view-chat");
+
+    if (chatContainer) {
       // Use requestAnimationFrame to ensure DOM is updated
       requestAnimationFrame(() => {
-        this.elements.messagesContainer.scrollTop =
-          this.elements.messagesContainer.scrollHeight;
+        chatContainer.scrollTop = chatContainer.scrollHeight;
 
-        // Fallback: try again after a short delay
+        // Fallback: try again after a short delay for streaming content
         setTimeout(() => {
-          this.elements.messagesContainer.scrollTop =
-            this.elements.messagesContainer.scrollHeight;
+          chatContainer.scrollTop = chatContainer.scrollHeight;
         }, 100);
       });
     }
@@ -1661,13 +1709,13 @@ class CompanyGPTChat {
     );
     if (button) button.classList.add("loading");
 
-    // --- Updated detection: treat ANY email provider as email ---
+    // --- Context flags ---
     const isEmail =
       !!context?.isEmail ||
       !!context?.isGmail ||
       !!context?.isOutlook ||
       context?.emailProvider ||
-      context?.sourceType === "email"; // optional: cover generic sourceType
+      context?.sourceType === "email";
 
     const isGoogleDocs =
       !!context?.isGoogleDocs || context?.sourceType === "docs";
@@ -1675,19 +1723,23 @@ class CompanyGPTChat {
     const isDocumentLike =
       isGoogleDocs || !!context?.isDocument || !!context?.isPage;
 
-    // --- Intent handling ---
-    let intent = "general";
-    if (action === "reply") {
-      intent = "email-reply";
-    } else if (action === "reply-with-data") {
-      intent = "email-reply";
-    } else if (action === "summarize") {
-      intent = isEmail ? "email-summary" : "document-summary";
-    }
+    // --- Intent handling via helper ---
+    // If determineIntentForAction is not defined, fallback to previous logic
+    const intent =
+      typeof this.determineIntentForAction === "function"
+        ? this.determineIntentForAction(action)
+        : (() => {
+            if (action === "reply" || action === "reply-with-data")
+              return "email-reply";
+            if (action === "summarize")
+              return isEmail ? "email-summary" : "document-summary";
+            return "general";
+          })();
 
-    // Store the intent BEFORE sending the message
-    this.store.set("chat.currentIntent", intent);
-    this.store.set("chat.lastUserIntent", intent);
+    // Start lifecycle (sets/locks any needed state internally)
+    if (typeof this.manageIntentLifecycle === "function") {
+      this.manageIntentLifecycle("start", intent);
+    }
 
     console.log("[App] Setting intent for action:", action, "->", intent);
 
@@ -1711,6 +1763,9 @@ class CompanyGPTChat {
         if (!isEmail) {
           this.showError("Diese Aktion ist nur für E-Mails verfügbar.");
           if (button) button.classList.remove("loading");
+          if (typeof this.manageIntentLifecycle === "function") {
+            this.manageIntentLifecycle("complete");
+          }
           return;
         }
         query =
@@ -1721,8 +1776,12 @@ class CompanyGPTChat {
         if (!isEmail) {
           this.showError("Diese Aktion ist nur für E-Mails verfügbar.");
           if (button) button.classList.remove("loading");
+          if (typeof this.manageIntentLifecycle === "function") {
+            this.manageIntentLifecycle("complete");
+          }
           return;
         }
+        // Text hints that Datenspeicher flow will follow
         query =
           "Bitte beantworte mir diese Email und nutze dabei relevante Informationen aus unserem Datenspeicher.";
         break;
@@ -1731,6 +1790,9 @@ class CompanyGPTChat {
         if (!isDocumentLike) {
           this.showError("Diese Aktion ist für Dokumente gedacht.");
           if (button) button.classList.remove("loading");
+          if (typeof this.manageIntentLifecycle === "function") {
+            this.manageIntentLifecycle("complete");
+          }
           return;
         }
         query =
@@ -1741,6 +1803,9 @@ class CompanyGPTChat {
         if (!isDocumentLike) {
           this.showError("Diese Aktion ist für Dokumente gedacht.");
           if (button) button.classList.remove("loading");
+          if (typeof this.manageIntentLifecycle === "function") {
+            this.manageIntentLifecycle("complete");
+          }
           return;
         }
         query =
@@ -1750,6 +1815,9 @@ class CompanyGPTChat {
       default:
         console.error("[App] Unknown action:", action);
         if (button) button.classList.remove("loading");
+        if (typeof this.manageIntentLifecycle === "function") {
+          this.manageIntentLifecycle("complete");
+        }
         return;
     }
 
@@ -1783,12 +1851,39 @@ class CompanyGPTChat {
       this.showError(`Fehler: ${error.message}`);
     } finally {
       if (button) button.classList.remove("loading");
+      // End lifecycle (clears transient intent/state)
+      if (typeof this.manageIntentLifecycle === "function") {
+        this.manageIntentLifecycle("complete");
+      }
+    }
+  }
+
+  manageIntentLifecycle(phase, intent = null) {
+    switch (phase) {
+      case "start":
+        // Starting an action (email reply, summarize, etc.)
+        this.store.set("chat.currentIntent", intent);
+        this.store.set("chat.intentPhase", "active");
+        console.log(`[App] Intent lifecycle: Started ${intent}`);
+        break;
+
+      case "complete":
+        // Action completed, clear intent
+        this.store.set("chat.currentIntent", null);
+        this.store.set("chat.intentPhase", "idle");
+        console.log("[App] Intent lifecycle: Completed, intent cleared");
+        break;
+
+      case "check":
+        // Check if we're in an active intent phase
+        return this.store.get("chat.intentPhase") === "active";
     }
   }
 
   // Add this method to your CompanyGPTChat class in app.js
   // Place it after the handleContextAction method
   async handleDatenspeicherReply(selection) {
+    this.manageIntentLifecycle("start", "email-reply");
     console.log(
       "[App] Datenspeicher selected for multi-step reply:",
       selection
@@ -1806,11 +1901,13 @@ class CompanyGPTChat {
       !!context?.isGmail ||
       !!context?.isOutlook ||
       context?.emailProvider;
+
     if (!isEmail) {
       this.showError("Diese Aktion ist nur für E-Mails verfügbar.");
       return;
     }
 
+    // --- Auth & chat controller checks (existing behavior) ---
     if (!this.store.get("auth.isAuthenticated")) {
       this.showError("Bitte melde dich erst an");
       return;
@@ -1833,10 +1930,10 @@ class CompanyGPTChat {
         this.elements.messageInput.value = "";
       }
 
-      // Add user message to chat UI and store
+      // Add user message to chat UI
       this.addMessage(query, "user");
 
-      // IMPORTANT: Also add to store's chat messages
+      // IMPORTANT: Also add to store's chat messages AND set intent
       const userMessage = {
         id: `msg-${Date.now()}-user`,
         role: "user",
@@ -1846,19 +1943,27 @@ class CompanyGPTChat {
         _datenspeicherRequest: true,
         _folderId: selection.folderId,
         _folderName: selection.folderName,
+        _originalIntent: "email-reply", // preserve original intent
       };
 
       const currentMessages = this.store.get("chat.messages") || [];
       this.store.set("chat.messages", [...currentMessages, userMessage]);
 
-      console.log("[App] Starting multi-step Datenspeicher process");
+      // FORCE email-reply intent for email contexts with Datenspeicher
+      this.store.set("chat.lastUserIntent", "email-reply");
+      this.store.set("chat.currentIntent", "email-reply");
 
-      // Use the multi-step method
+      console.log(
+        "[App] Starting multi-step Datenspeicher process with email-reply intent"
+      );
+
+      // Pass the intent explicitly to the controller
       const response = await this.chatController.sendDatanspeicherReply(
         query,
         context,
         selection.folderId,
-        selection.folderName
+        selection.folderName,
+        "email-reply" // pass intent explicitly
       );
 
       // Show process card if present
@@ -1868,7 +1973,7 @@ class CompanyGPTChat {
 
       // Only show response if not aborted and content exists
       if (response && response.content) {
-        // IMPORTANT: Add assistant response to store
+        // Add assistant response to store
         const assistantMessage = {
           id: `msg-${Date.now()}-assistant`,
           role: "assistant",
@@ -1886,11 +1991,15 @@ class CompanyGPTChat {
         await this.streamText(messageId, response.content, 3);
       }
 
+      // Ensure intent remains correctly set after response
+      this.store.set("chat.lastUserIntent", "email-reply");
+
       console.log("[App] Multi-step Datenspeicher reply completed");
     } catch (error) {
       console.error("[App] Failed to process Datenspeicher reply:", error);
       this.showError(`Fehler: ${error.message}`);
     }
+    this.manageIntentLifecycle("complete");
   }
 }
 

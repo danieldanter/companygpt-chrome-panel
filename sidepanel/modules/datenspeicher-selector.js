@@ -1,5 +1,5 @@
 // sidepanel/modules/datenspeicher-selector.js
-
+import { debounce } from "./utils.js";
 export class DatenspeicherSelector {
   constructor(store) {
     this.store = store;
@@ -7,6 +7,11 @@ export class DatenspeicherSelector {
     this.selectedFolder = null; // Single selection
     this.dropdownElement = null;
     this.isOpen = false;
+
+    // Debounced search: waits 300ms after typing stops
+    this.debouncedSearch = debounce((searchTerm) => {
+      this.performSearch(searchTerm);
+    }, 300);
 
     // Initialize
     this.init();
@@ -123,11 +128,17 @@ export class DatenspeicherSelector {
         this.renderFolders();
       });
 
-    // Search input
+    // Search input with debouncing
     document
       .getElementById("datenspeicher-search")
       ?.addEventListener("input", (e) => {
-        this.filterFolders(e.target.value);
+        const searchTerm = e.target.value;
+
+        // Show loading state immediately while typing
+        this.showSearching();
+
+        // Perform actual search after debounce
+        this.debouncedSearch(searchTerm);
       });
 
     // Click outside to close
@@ -141,6 +152,25 @@ export class DatenspeicherSelector {
         this.close();
       }
     });
+  }
+
+  showSearching() {
+    const listElement = document.getElementById("datenspeicher-list");
+    if (listElement && !listElement.querySelector(".searching")) {
+      const searchingEl = document.createElement("div");
+      searchingEl.className = "searching";
+      searchingEl.textContent = "Suche...";
+      listElement.prepend(searchingEl);
+    }
+  }
+
+  performSearch(searchTerm) {
+    // Remove searching indicator
+    const searchingEl = document.querySelector(".searching");
+    if (searchingEl) searchingEl.remove();
+
+    // Perform actual filter
+    this.filterFolders(searchTerm);
   }
 
   /**
