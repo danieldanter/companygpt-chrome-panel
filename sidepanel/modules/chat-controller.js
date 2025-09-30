@@ -106,130 +106,38 @@ export class ChatController {
   async loadFoldersAndRoles() {
     this.log("Loading folders and roles...");
 
-    const domain =
-      this.store.get("auth.domain") || this.store.get("auth.activeDomain");
-    if (!domain) {
-      console.error(
-        "[ChatController] No domain configured. Please ensure you're logged in."
-      );
-      return; // don't throw—just stop gracefully
-    }
-
-    this.log("Using domain from store:", domain);
-
-    // Helper: retry wrapper with exponential backoff for 401/temporary errors
-    const fetchWithRetry = async (
-      url,
-      { attempts = 3, baseDelayMs = 800 } = {}
-    ) => {
-      let lastErr;
-      for (let i = 0; i < attempts; i++) {
-        try {
-          const res = await this.makeAuthenticatedRequest(url);
-
-          if (!res.ok) {
-            // Treat 401/429/5xx as retryable
-            if (
-              [401, 429, 500, 502, 503, 504].includes(res.status) &&
-              i < attempts - 1
-            ) {
-              const delay = baseDelayMs * Math.pow(2, i); // backoff: 0.8s, 1.6s, 3.2s
-              this.log(
-                `Request to ${url} failed with ${res.status}. Retrying in ${delay}ms...`
-              );
-              await new Promise((r) => setTimeout(r, delay));
-              continue;
-            }
-            // Non-retryable or last attempt
-            const text = await res.text().catch(() => "");
-            const err = new Error(
-              `HTTP ${res.status} for ${url}${text ? ` – ${text}` : ""}`
-            );
-            err.status = res.status;
-            throw err;
-          }
-
-          // Safe JSON
-          let data;
-          try {
-            data = await res.json();
-          } catch (e) {
-            const text = await res.text().catch(() => "");
-            throw new Error(
-              `Invalid JSON from ${url}${
-                text ? ` – body: ${text.slice(0, 300)}…` : ""
-              }`
-            );
-          }
-
-          return data;
-        } catch (err) {
-          lastErr = err;
-          // Only backoff on retryable errors; message already handled above for http statuses
-          if (i < attempts - 1) {
-            const delay = baseDelayMs * Math.pow(2, i);
-            this.log(
-              `Error calling ${url}: ${
-                err?.message || err
-              }. Retrying in ${delay}ms...`
-            );
-            await new Promise((r) => setTimeout(r, delay));
-          }
-        }
-      }
-      throw lastErr;
-    };
-
     try {
-      // -------- Load folders --------
-      const foldersUrl = `https://${domain}.506.ai/api/folders`;
-      this.log("Fetching folders from:", foldersUrl);
-      const foldersData = await fetchWithRetry(foldersUrl);
-
+      // Use APIService for folders
+      const foldersData = await window.APIService.fetchFolders();
       this.log("Folders response:", foldersData);
 
-      const rootChatFolder = foldersData?.folders?.find?.(
+      const rootChatFolder = foldersData?.folders?.find(
         (f) => f?.type === "ROOT_CHAT"
       );
-      if (!rootChatFolder) {
-        console.warn("[ChatController] No ROOT_CHAT folder found.");
-      } else {
+
+      if (rootChatFolder) {
         this.store.set("chat.folderId", rootChatFolder.id);
-        this.log("Found ROOT_CHAT folder:", {
-          id: rootChatFolder.id,
-          name: rootChatFolder.name,
-        });
+        this.log("Found ROOT_CHAT folder:", rootChatFolder);
       }
 
-      // -------- Load roles --------
-      const rolesUrl = `https://${domain}.506.ai/api/roles`;
-      this.log("Fetching roles from:", rolesUrl);
-      const rolesData = await fetchWithRetry(rolesUrl);
-
+      // Use APIService for roles
+      const rolesData = await window.APIService.fetchRoles();
       this.log("Roles response:", rolesData);
 
       const roles = rolesData?.roles || [];
-      let chosenRole = roles.find((r) => r?.defaultRole === true) || roles[0];
+      const chosenRole = roles.find((r) => r?.defaultRole === true) || roles[0];
 
-      if (!chosenRole) {
-        console.warn("[ChatController] No roles available.");
-      } else {
-        // Some APIs use id vs roleId—support both
+      if (chosenRole) {
         const roleId = chosenRole.roleId ?? chosenRole.id;
         this.store.set("chat.roleId", roleId);
-        this.log(
-          chosenRole.defaultRole
-            ? "Found default role:"
-            : "No default role found, using first role:",
-          {
-            id: roleId,
-            name: chosenRole.name,
-          }
-        );
+        this.log("Set role:", chosenRole);
       }
     } catch (error) {
-      console.error("[ChatController] Failed to load folders/roles:", error);
-      // Don't throw—log and continue so the app can degrade gracefully
+      console.warn(
+        "[ChatController] Failed to load folders/roles (non-critical):",
+        error.message
+      );
+      // Don't throw - these aren't critical for basic chat functionality
     }
   }
 
@@ -240,12 +148,17 @@ export class ChatController {
     this.log("Making authenticated request:", url, options);
 
     try {
+      // Debug what we're receiving
+      console.log("[ChatController] Options body:", options.body);
+
       // Extract the payload from options
       const payload = options.body ? JSON.parse(options.body) : {};
 
+      console.log("[ChatController] Parsed payload:", payload);
+      console.log("[ChatController] Payload keys:", Object.keys(payload));
+
       const response = await window.APIService.sendChatMessage(payload);
 
-      // Return in the same format the rest of the code expects
       return {
         ok: true,
         json: async () => response,

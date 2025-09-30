@@ -124,37 +124,120 @@
       const subjectEl = document.querySelector("h2[data-legacy-thread-id]");
       const subject = subjectEl?.innerText || "";
 
-      // Extract all messages in thread
-      document
-        .querySelectorAll('div[role="listitem"]')
-        .forEach((msgEl, index) => {
-          const senderEl =
-            msgEl.querySelector("span[email]") || msgEl.querySelector(".gD");
+      // Try multiple strategies to get all messages
+
+      // Strategy 1: Get expanded messages (current view)
+      const expandedMessages = document.querySelectorAll(".ii.gt");
+
+      // Strategy 2: Get collapsed message previews
+      const collapsedMessages = document.querySelectorAll(".kv, .kQ");
+
+      // Strategy 3: Get all message containers (includes both)
+      const allMessageContainers = document.querySelectorAll(
+        '[jsaction*="email"]'
+      );
+
+      // Strategy 4: Look for specific Gmail message structure
+      const gmailMessages = document.querySelectorAll(".h7, .g6, .nH.if");
+
+      console.log("[Gmail Extractor] Found elements:", {
+        expanded: expandedMessages.length,
+        collapsed: collapsedMessages.length,
+        containers: allMessageContainers.length,
+        gmail: gmailMessages.length,
+      });
+
+      // Try to extract from expanded messages first
+      expandedMessages.forEach((msgEl, index) => {
+        // Find the parent container that has sender info
+        const container =
+          msgEl.closest(".h7") || msgEl.closest(".g6") || msgEl.parentElement;
+
+        // Get sender
+        const senderEl =
+          container?.querySelector("span[email]") ||
+          container?.querySelector(".gD") ||
+          container?.querySelector(".go span");
+        const sender =
+          senderEl?.getAttribute("email") ||
+          senderEl?.innerText ||
+          "Unknown sender";
+
+        // Get message body
+        const bodyText = msgEl.innerText || "";
+
+        // Get timestamp if available
+        const timeEl =
+          container?.querySelector(".g3") ||
+          container?.querySelector('[title*=":"]');
+        const timestamp =
+          timeEl?.getAttribute("title") || timeEl?.innerText || "";
+
+        if (bodyText && bodyText.trim()) {
+          messages.push({
+            index: index + 1,
+            sender: sender.trim(),
+            timestamp: timestamp,
+            body: bodyText.trim(),
+          });
+        }
+      });
+
+      // If we didn't get all messages, try collapsed ones
+      if (messages.length < 2) {
+        // Look for the "show trimmed content" or collapsed messages
+        const quotedText = document.querySelectorAll(".ajR .ajT");
+        quotedText.forEach((btn) => btn.click()); // Expand quoted text
+
+        // Also try to get the previous messages in thread
+        const threadMessages = document.querySelectorAll("[data-message-id]");
+        threadMessages.forEach((msgEl, index) => {
           const sender =
-            senderEl?.getAttribute("email") ||
-            senderEl?.innerText ||
-            "Unknown sender";
+            msgEl.querySelector(".gD")?.innerText ||
+            msgEl.querySelector("[email]")?.getAttribute("email") ||
+            "Unknown";
+          const body = msgEl.querySelector(".a3s")?.innerText || "";
 
-          const bodyEl =
-            msgEl.querySelector(".ii.gt .a3s.aiL") ||
-            msgEl.querySelector(".a3s") ||
-            msgEl.querySelector('[dir="ltr"]');
-          const body = bodyEl?.innerText || "";
-
-          if (body) {
+          if (body && !messages.find((m) => m.body === body.trim())) {
             messages.push({
-              index: index + 1,
-              sender,
+              index: messages.length + 1,
+              sender: sender,
               timestamp: "",
               body: body.trim(),
             });
           }
         });
+      }
+
+      // Last resort: Get all visible text that looks like email content
+      if (messages.length === 1) {
+        // Check if there's quoted text that wasn't captured
+        const quotedBlocks = document.querySelectorAll(
+          ".gmail_quote, blockquote"
+        );
+        quotedBlocks.forEach((block) => {
+          const text = block.innerText;
+          if (text && text.length > 50) {
+            // Probably actual content
+            messages.push({
+              index: messages.length + 1,
+              sender: "Previous message",
+              timestamp: "",
+              body: text.trim(),
+            });
+          }
+        });
+      }
 
       // Format as single content string
       let content = subject ? `Subject: ${subject}\n\n` : "";
-      messages.forEach((msg) => {
-        content += `From: ${msg.sender}\n${msg.body}\n\n`;
+
+      // Include all messages in chronological order
+      messages.forEach((msg, idx) => {
+        content += `--- Message ${idx + 1} ---\n`;
+        content += `From: ${msg.sender}\n`;
+        if (msg.timestamp) content += `Time: ${msg.timestamp}\n`;
+        content += `${msg.body}\n\n`;
       });
 
       return {
@@ -169,6 +252,7 @@
           extractionMethod: "gmail-dom",
           isEmail: true,
           emailProvider: "gmail",
+          threadDetected: messages.length > 1,
         },
       };
     }

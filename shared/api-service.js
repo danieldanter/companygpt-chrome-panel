@@ -46,8 +46,35 @@
 
     async fetchFolders() {
       const domain = getCurrentDomain();
-      const data = await apiRequest(domain, "FOLDERS");
-      return data.folders || [];
+      if (!domain) throw new Error("No domain configured");
+
+      console.log(
+        "[APIService] Fetching folders from:",
+        `https://${domain}.506.ai/api/folders`
+      );
+
+      // Direct API call using chrome.runtime.sendMessage
+      const response = await chrome.runtime.sendMessage({
+        type: "API_REQUEST",
+        data: {
+          url: `https://${domain}.506.ai/api/folders`,
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          credentials: "include",
+        },
+      });
+
+      console.log("[APIService] Folders response:", response);
+
+      if (!response?.success) {
+        throw new Error(response?.error || "Failed to fetch folders");
+      }
+
+      // Return the full data object which should contain { folders: [...] }
+      return response.data;
     },
 
     async uploadAudio(folderId, filename, audioBlob) {
@@ -109,11 +136,41 @@
       return response.data;
     },
 
+    // In shared/api-service.js, add these methods to window.APIService:
+
+    async fetchRoles() {
+      const domain = getCurrentDomain();
+      if (!domain) throw new Error("No domain configured");
+
+      const response = await chrome.runtime.sendMessage({
+        type: "API_REQUEST",
+        data: {
+          url: `https://${domain}.506.ai/api/roles`,
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          credentials: "include",
+        },
+      });
+
+      if (!response?.success) {
+        throw new Error(response?.error || "Failed to fetch roles");
+      }
+
+      return response.data;
+    },
+
     async sendChatMessage(payload) {
       const domain = getCurrentDomain();
       if (!domain) throw new Error("No domain configured");
 
-      // Make the EXACT same call that chat-controller was making
+      // Debug log
+      console.log("[APIService] Sending chat payload:", payload);
+      console.log("[APIService] Payload size:", JSON.stringify(payload).length);
+
+      // Make sure we're sending the payload correctly
       const response = await chrome.runtime.sendMessage({
         type: "API_REQUEST",
         data: {
@@ -124,7 +181,7 @@
             Accept: "application/json",
           },
           credentials: "include",
-          body: JSON.stringify(payload),
+          body: JSON.stringify(payload), // Make sure this is stringified
         },
       });
 

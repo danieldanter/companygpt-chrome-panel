@@ -222,10 +222,21 @@ export class DatenspeicherSelector {
       console.log("[DatenspeicherSelector] Loading folders via APIService");
 
       // USE THE APISERVICE!
-      const allFolders = await window.APIService.fetchFolders();
+      const response = await window.APIService.fetchFolders();
 
-      // Filter only MEDIA type folders
-      this.folders = allFolders.filter((f) => f.type === "MEDIA") || [];
+      // Make sure we have an array
+      const allFolders = response?.folders || response || [];
+
+      // Only filter if it's actually an array
+      if (Array.isArray(allFolders)) {
+        this.folders = allFolders.filter((f) => f.type === "MEDIA") || [];
+      } else {
+        console.error(
+          "[DatenspeicherSelector] Invalid folders response:",
+          response
+        );
+        this.folders = [];
+      }
 
       console.log(
         `[DatenspeicherSelector] Loaded ${this.folders.length} MEDIA folders`
@@ -245,13 +256,13 @@ export class DatenspeicherSelector {
         console.log("[DatenspeicherSelector] Using cached folders as fallback");
         this.folders = cachedFolders;
         if (this.isOpen) this.renderFolders();
-      } else if (error.message.includes("No domain configured")) {
-        console.log("[DatenspeicherSelector] Not logged in, skipping");
       } else {
-        this.showError("Fehler beim Laden der Datenspeicher");
+        console.log("[DatenspeicherSelector] No folders available");
+        this.folders = [];
       }
     }
   }
+
   /**
    * Render folders in the dropdown
    */
