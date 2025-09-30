@@ -117,6 +117,23 @@
       };
     }
 
+    extractNameFromEmail(senderString) {
+      if (!senderString) return null;
+
+      // If it's just an email, extract the part before @
+      if (senderString.includes("@") && !senderString.includes("<")) {
+        return senderString.split("@")[0].replace(/[._-]/g, " ").trim();
+      }
+
+      // If it's "Name <email>", extract Name
+      const match = senderString.match(/^([^<]+)</);
+      if (match) {
+        return match[1].trim();
+      }
+
+      return senderString.trim();
+    }
+
     extractGmail() {
       const messages = [];
 
@@ -191,7 +208,7 @@
 
         // Also try to get the previous messages in thread
         const threadMessages = document.querySelectorAll("[data-message-id]");
-        threadMessages.forEach((msgEl, index) => {
+        threadMessages.forEach((msgEl) => {
           const sender =
             msgEl.querySelector(".gD")?.innerText ||
             msgEl.querySelector("[email]")?.getAttribute("email") ||
@@ -240,6 +257,14 @@
         content += `${msg.body}\n\n`;
       });
 
+      // NEW: Extract the actual sender (from the visible message list), not the document title
+      const senderElements = document.querySelectorAll(".gD"); // Gmail sender class
+      let actualSender = null;
+      if (senderElements.length > 0) {
+        const last = senderElements[senderElements.length - 1];
+        actualSender = last.getAttribute("email") || last.innerText;
+      }
+
       return {
         success: true,
         provider: "gmail",
@@ -253,6 +278,8 @@
           isEmail: true,
           emailProvider: "gmail",
           threadDetected: messages.length > 1,
+          originalSender: actualSender, // ADD THIS
+          extractedSenderName: this.extractNameFromEmail(actualSender), // ADD THIS
         },
       };
     }
@@ -847,17 +874,44 @@
       console.log("[ContentExtractor] Extracting generic content...");
       const selectedText = window.getSelection().toString();
 
+      // Use passed model limit or default
+      const modelLimit = this.modelLimit || 950000;
+
+      // Token to character ratio
+      const CHARS_PER_TOKEN = 4;
+
+      // Use 15% of model capacity for context
+      const CONTEXT_PERCENTAGE = 0.15;
+
+      // Calculate dynamic max length (cap at 100k chars)
+      const calculatedMax = Math.floor(
+        modelLimit * CHARS_PER_TOKEN * CONTEXT_PERCENTAGE
+      );
+      const maxLength = Math.min(calculatedMax, 100000);
+
+      console.log(
+        `[ContentExtractor] Dynamic limit: ${maxLength} chars (model: ${modelLimit} tokens)`
+      );
+
       // Try multiple strategies
       let content = "";
 
       // Strategy 1: Look for main content areas
-      const contentSelectors = this.siteConfig.selectors.content.split(", ");
-      for (const selector of contentSelectors) {
-        const element = document.querySelector(selector);
-        if (element && element.innerText.length > 100) {
-          content = element.innerText;
-          break;
+      try {
+        const selectorStr = this?.siteConfig?.selectors?.content || "";
+        const contentSelectors = selectorStr ? selectorStr.split(", ") : [];
+        for (const selector of contentSelectors) {
+          const element = document.querySelector(selector);
+          if (element && element.innerText && element.innerText.length > 100) {
+            content = element.innerText;
+            break;
+          }
         }
+      } catch (e) {
+        console.warn(
+          "[ContentExtractor] Error reading siteConfig selectors:",
+          e
+        );
       }
 
       // Strategy 2: Get largest text block if no main content found
@@ -870,6 +924,7 @@
 
         allTextBlocks.forEach((block) => {
           const text = block.innerText || "";
+          // avoid absurdly large nodes; prefer the largest reasonable chunk
           if (text.length > largestLength && text.length < 50000) {
             largestLength = text.length;
             largestBlock = text;
@@ -884,8 +939,16 @@
         content = document.body.innerText || "";
       }
 
-      // Truncate if too long
-      const maxLength = 10000;
+      // Optional light cleanup
+      if (content) {
+        // collapse excessive whitespace while preserving paragraphs
+        content = content
+          .replace(/\r/g, "")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+      }
+
+      // Truncate if too long using the dynamic limit
       if (content.length > maxLength) {
         content =
           content.substring(0, maxLength) + "\n\n[... Content truncated ...]";
@@ -898,6 +961,8 @@
           method: "generic-extraction",
           contentLength: content.length,
           hasSelectedText: !!selectedText,
+          modelLimit,
+          maxLength,
         },
       };
     }
@@ -977,6 +1042,10 @@
                   return { status: "ready", type: this.siteConfig.type };
 
                 case "EXTRACT_CONTENT":
+                  // Pass model limit to extraction
+                  if (request.options?.modelLimit) {
+                    this.modelLimit = request.options.modelLimit;
+                  }
                   return await this.extractContent(request.options);
 
                 default:

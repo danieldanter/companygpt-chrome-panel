@@ -368,11 +368,15 @@ export class ContextManager {
   async extractViaContentScript(tabId) {
     console.log("[ContextManager] Extracting via content script");
 
+    // Get model limit from store
+    const modelLimit = this.store.get("chat.model.maxLength") || 950000;
+
     const response = await chrome.tabs.sendMessage(tabId, {
       action: "EXTRACT_CONTENT",
       options: {
         includeSelected: true,
-        maxLength: 10000,
+        maxLength: 10000, // Keep for backwards compatibility
+        modelLimit: modelLimit, // NEW: Pass model limit
       },
     });
 

@@ -482,24 +482,58 @@ export class ChatController {
     return await this.makeIsolatedQuery(query, "QA", folderId);
   }
 
+  extractSenderName(emailLines) {
+    // Look for "Von:", "From:", or greeting patterns
+    for (const line of emailLines) {
+      if (line.includes("Von:") || line.includes("From:")) {
+        const name = line.split(":")[1]?.trim().split(" ")[0];
+        if (name) return name;
+      }
+      // Check for signature
+      if (
+        line.toLowerCase().includes("grüß") ||
+        line.toLowerCase().includes("regards")
+      ) {
+        const nextLine = emailLines[emailLines.indexOf(line) + 1];
+        if (nextLine && !nextLine.includes("@")) {
+          return nextLine.trim().split(" ")[0];
+        }
+      }
+    }
+    return null;
+  }
+
   // Add method to generate email reply
   async generateEmailReply(originalContext, ragResults) {
-    const prompt = `Schreibe eine professionelle und freundliche Email-Antwort.
+    // Extract sender name if possible
+    const emailLines = (originalContext.content || "").split("\n");
+    const senderName = this.extractSenderName(emailLines); // Helper method
 
-    GEFUNDENE INFORMATIONEN:
-    ${ragResults}
+    const prompt = `Du bist ein hilfsbereiter Support-Mitarbeiter.
 
-    ORIGINALE EMAIL:
-    ${originalContext.content || originalContext.mainContent}
+  KONTEXT: ${ragResults}
 
-    Anweisungen:
-    - Beantworte alle Fragen vollständig mit den gefundenen Informationen
-    - Sei freundlich und professionell
-    - Verwende die korrekte Anrede wenn der Name bekannt ist
-    - Schließe mit einem freundlichen Gruß
-    - Formatiere als komplette Email-Antwort
+  EMAIL VON KUNDE: ${originalContext.content || originalContext.mainContent}
 
-    Email-Antwort:`;
+  Aufgabe: Verfasse eine professionelle Email-Antwort.
+
+  KRITISCHE REGELN:
+  1. Schreibe DIREKT die Antwort, ohne zu erwähnen woher die Info kommt
+  2. VERMEIDE Phrasen wie:
+    - "Basierend auf den vorliegenden Informationen..."
+    - "Laut unseren Unterlagen..."
+    - "Ich habe nachgeschaut und..."
+    - "Die Dokumente zeigen..."
+    
+  3. STATTDESSEN schreibe natürlich:
+    - "Die Upload-Funktion unterstützt mp4-Format"
+    - "Sie können maximal 3000 Chunks pro Request senden"
+    - "Der Fehlercode 415 bedeutet, dass..."
+
+  4. Struktur:
+    - Gehe direkt auf die Fragen ein
+
+  Email-Antwort (NUR der Email-Text, keine Erklärungen):`;
 
     return await this.makeIsolatedQuery(prompt, "BASIC");
   }
