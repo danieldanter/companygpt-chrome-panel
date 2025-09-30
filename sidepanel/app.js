@@ -321,19 +321,11 @@ class CompanyGPTChat {
     }
   }
 
-  // In app.js, replace the openFolderSelector method:
-
-  // In app.js, replace openFolderSelector with this simpler version:
-
   async openFolderSelector() {
     console.log("[App] Opening upload folder selector");
 
     const button = document.getElementById("upload-folder-select");
     if (!button) return;
-
-    // Get the ALREADY LOADED folders from your existing datenspeicherSelector
-    const folders = this.datenspeicherSelector?.folders || [];
-    console.log("[App] Using existing folders:", folders.length);
 
     // Check if dropdown exists
     let dropdown = button.parentElement.querySelector(
@@ -357,37 +349,36 @@ class CompanyGPTChat {
     if (dropdown.classList.contains("show")) {
       const list = dropdown.querySelector(".dropdown-list");
 
-      // If we have folders, show them
-      if (folders.length > 0) {
-        list.innerHTML = folders
-          .map(
-            (folder) => `
-          <div class="dropdown-item" data-folder-id="${folder.id}">
-            <span class="dropdown-item-name">${folder.name}</span>
-          </div>
-        `
-          )
-          .join("");
-      } else {
-        // If no folders yet, load them using the existing method
-        await this.datenspeicherSelector.loadFolders();
-        const loadedFolders = this.datenspeicherSelector.folders || [];
+      // === REPLACED SECTION: load folders via APIService and filter MEDIA ===
+      try {
+        const folders = await window.APIService.fetchFolders();
+        console.log("[App] Folders loaded:", folders.length);
 
-        if (loadedFolders.length > 0) {
-          list.innerHTML = loadedFolders
-            .map(
-              (folder) => `
-            <div class="dropdown-item" data-folder-id="${folder.id}">
-              <span class="dropdown-item-name">${folder.name}</span>
-            </div>
-          `
-            )
-            .join("");
+        if (folders.length > 0) {
+          const mediaFolders = folders.filter((f) => f.type === "MEDIA");
+          if (mediaFolders.length > 0) {
+            list.innerHTML = mediaFolders
+              .map(
+                (folder) => `
+                <div class="dropdown-item" data-folder-id="${folder.id}">
+                  <span class="dropdown-item-name">${folder.name}</span>
+                </div>
+              `
+              )
+              .join("");
+          } else {
+            list.innerHTML =
+              '<div class="dropdown-empty">Keine Datenspeicher gefunden</div>';
+          }
         } else {
           list.innerHTML =
-            '<div class="dropdown-empty">Keine Datenspeicher</div>';
+            '<div class="dropdown-empty">Keine Datenspeicher gefunden</div>';
         }
+      } catch (error) {
+        console.error("[App] Failed to load folders:", error);
+        list.innerHTML = '<div class="dropdown-error">Fehler beim Laden</div>';
       }
+      // === END REPLACED SECTION ===
 
       // Simple click handler
       list.onclick = (e) => {
@@ -398,11 +389,12 @@ class CompanyGPTChat {
         const folderName = item.textContent.trim();
 
         // Update UI
-        document.getElementById("upload-folder-text").textContent = folderName;
+        const textEl = document.getElementById("upload-folder-text");
+        if (textEl) textEl.textContent = folderName;
 
         // Store selection
         this.uploadFolderId = folderId;
-        this.store.set("upload.selectedFolderId", folderId);
+        this.store?.set?.("upload.selectedFolderId", folderId);
 
         // Close dropdown
         dropdown.classList.remove("show");
@@ -421,6 +413,7 @@ class CompanyGPTChat {
       });
     }, 10);
   }
+
   setupEventListeners() {
     // Icon button navigation
     this.elements.btnChat?.addEventListener("click", () => {

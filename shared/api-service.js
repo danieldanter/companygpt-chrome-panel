@@ -78,6 +78,63 @@
       });
     },
 
+    // ADD THIS NEW METHOD:
+    // In shared/api-service.js, update the request method:
+
+    async request(endpoint, options = {}) {
+      const domain = getCurrentDomain();
+      if (!domain) throw new Error("No domain configured - please login");
+
+      // If it's already a path like "qr/chat", use it directly
+      // Don't try to map it through CONFIG
+      const url = `https://${domain}.506.ai/api/${endpoint}`;
+
+      const response = await chrome.runtime.sendMessage({
+        type: "API_REQUEST",
+        data: {
+          url,
+          method: options.method || "GET",
+          headers: {
+            "Content-Type": "application/json",
+            ...options.headers,
+          },
+          body: options.body ? JSON.stringify(options.body) : undefined,
+        },
+      });
+
+      if (!response.success) {
+        throw new Error(response.error || "API request failed");
+      }
+
+      return response.data;
+    },
+
+    async sendChatMessage(payload) {
+      const domain = getCurrentDomain();
+      if (!domain) throw new Error("No domain configured");
+
+      // Make the EXACT same call that chat-controller was making
+      const response = await chrome.runtime.sendMessage({
+        type: "API_REQUEST",
+        data: {
+          url: `https://${domain}.506.ai/api/qr/chat`,
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify(payload),
+        },
+      });
+
+      if (!response?.success) {
+        throw new Error(response?.error || "API request failed");
+      }
+
+      return response.data;
+    },
+
     openCompanyGPT() {
       const domain = getCurrentDomain();
       if (!domain) throw new Error("No domain configured");

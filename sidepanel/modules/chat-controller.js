@@ -237,52 +237,39 @@ export class ChatController {
    * Make authenticated request with cookies
    */
   async makeAuthenticatedRequest(url, options = {}) {
-    const defaultOptions = {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        ...options.headers,
-      },
-      credentials: "include",
-    };
+    this.log("Making authenticated request:", url, options);
 
-    const finalOptions = { ...defaultOptions, ...options };
-    this.log("Making authenticated request:", url, finalOptions);
+    try {
+      // Extract the payload from options
+      const payload = options.body ? JSON.parse(options.body) : {};
 
-    const response = await chrome.runtime.sendMessage({
-      type: "API_REQUEST",
-      data: {
-        url,
-        ...finalOptions,
-      },
-    });
+      const response = await window.APIService.sendChatMessage(payload);
 
-    if (!response?.success) {
-      const error = response?.error || "API request failed";
+      // Return in the same format the rest of the code expects
+      return {
+        ok: true,
+        json: async () => response,
+        text: async () => JSON.stringify(response),
+      };
+    } catch (error) {
+      this.log("Request failed:", error);
 
-      // Check for server errors (5xx) OR permission errors (403)
+      // Keep the same error handling
+      const errorMessage = error.message || error.toString();
       if (
-        error.includes("500") ||
-        error.includes("502") ||
-        error.includes("503") ||
-        error.includes("403") ||
-        error.includes("ERR_BAD_REQUEST")
+        errorMessage.includes("500") ||
+        errorMessage.includes("502") ||
+        errorMessage.includes("503") ||
+        errorMessage.includes("403") ||
+        errorMessage.includes("ERR_BAD_REQUEST")
       ) {
         const serverError = new Error("SERVER_UNAVAILABLE");
         serverError.isServerError = true;
-        serverError.originalError = error;
+        serverError.originalError = errorMessage;
         throw serverError;
       }
-
-      throw new Error(error);
+      throw error;
     }
-
-    return {
-      ok: true,
-      json: async () => response.data,
-      text: async () => JSON.stringify(response.data),
-    };
   }
 
   detectIntent(text, context) {
