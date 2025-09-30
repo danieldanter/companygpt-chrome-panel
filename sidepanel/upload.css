@@ -13,7 +13,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  min-height: 0; /* ADD THIS - allows content to shrink properly */
+  min-height: 0; /* allows content to shrink properly */
 }
 
 /* Upload Tabs */
@@ -24,8 +24,8 @@
   padding: 4px;
   border-radius: var(--r-m);
   border: 1px solid var(--border);
-  margin-top: auto; /* ADD THIS - pushes tabs to bottom */
-  flex-shrink: 0; /* ADD THIS - prevents tabs from shrinking */
+  margin-top: auto; /* pushes tabs to bottom */
+  flex-shrink: 0; /* prevents tabs from shrinking */
 }
 
 .upload-tab {
@@ -111,13 +111,14 @@
   border-color: var(--blue-500);
 }
 
-/* Audio Recorder */
+/* Audio Recorder Styles */
 .audio-recorder {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
-  padding: 40px 20px;
+  justify-content: center;
+  padding: 20px;
+  min-height: 200px;
 }
 
 .record-button {
@@ -131,7 +132,9 @@
   border-radius: 50%;
   color: var(--white);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
+  width: 100px;
+  height: 100px;
 }
 
 .record-button:hover {
@@ -141,14 +144,119 @@
 
 .record-button.recording {
   background: var(--danger);
-  animation: pulse 1.5s infinite;
+  animation: pulse 2s infinite;
+}
+
+.record-button.recording .record-icon {
+  animation: none;
+}
+
+.record-button.recording .record-icon circle {
+  fill: var(--white);
+  r: 4;
+}
+
+.record-text {
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 8px;
 }
 
 .recording-time {
-  font-size: 18px;
+  margin-top: 20px;
+  font-size: 24px;
   font-weight: 600;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
+}
+
+.playback-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding: 20px;
+}
+
+.playback-controls audio {
+  width: 100%;
+  max-width: 300px;
+}
+
+.playback-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.btn-upload-audio,
+.btn-delete-audio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: var(--r-m);
+  border: 1px solid var(--border);
+  background: var(--white);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-upload-audio {
+  background: var(--blue-600);
+  color: var(--white);
+  border-color: var(--blue-600);
+}
+
+.btn-upload-audio:hover {
+  background: var(--blue-500);
+  transform: translateY(-1px);
+}
+
+.btn-delete-audio:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* URL Crawler Styles */
+.url-crawler {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+}
+
+.upload-button {
+  padding: 12px 20px;
+  background: var(--blue-600);
+  color: var(--white);
+  border: none;
+  border-radius: var(--r-m);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.upload-button:hover {
+  background: var(--blue-500);
+  transform: translateY(-1px);
+}
+
+.upload-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Placeholder for screen recording */
+.placeholder-text {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px;
+  font-style: italic;
 }
 
 @keyframes pulse {
@@ -161,4 +269,68 @@
   100% {
     box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
   }
+}
+
+/* Upload folder dropdown */
+.upload-field {
+  position: relative;
+}
+
+.upload-field .datenspeicher-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  z-index: 1000;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--r-m);
+  box-shadow: var(--shadow-lg);
+  max-height: 300px;
+  overflow: hidden;
+  display: none;
+}
+
+.upload-field .datenspeicher-dropdown.show {
+  display: block;
+}
+
+.upload-field .dropdown-list {
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.upload-field .dropdown-item {
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.upload-field .dropdown-item:hover {
+  background: var(--bg-secondary);
+}
+
+.record-button.permission-required {
+  background: var(--warning);
+  cursor: help;
+}
+
+.permission-needed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.permission-text {
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.permission-hint {
+  font-size: 9px;
+  opacity: 0.8;
+  margin-top: 2px;
 }

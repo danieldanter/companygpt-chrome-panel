@@ -20,13 +20,22 @@ export class DatenspeicherSelector {
   async init() {
     console.log("[DatenspeicherSelector] Initializing...");
 
-    // Create dropdown element
     this.createDropdownElement();
 
-    // Load folders on init (we can cache them)
-    await this.loadFolders();
+    // Only try to load if we might be authenticated
+    try {
+      const isAuth = await window.APIService.checkAuth();
+      if (isAuth) {
+        await this.loadFolders();
+      } else {
+        console.log(
+          "[DatenspeicherSelector] Not authenticated on init, skipping load"
+        );
+      }
+    } catch (error) {
+      console.log("[DatenspeicherSelector] Init load skipped:", error.message);
+    }
 
-    // Restore last selection from store
     this.restoreLastSelection();
   }
 
@@ -176,115 +185,73 @@ export class DatenspeicherSelector {
   /**
    * Load folders from API or cache
    */
+  // In datenspeicher-selector.js, replace the loadFolders method:
+
   async loadFolders(forceRefresh = false) {
     try {
-      // Check cache first (unless force refresh)
+      // Check cache first (existing code)
       if (!forceRefresh) {
         const cachedFolders = this.store.get("datenspeicher.available");
         const cacheTime = this.store.get("datenspeicher.cacheTime");
 
-        // Use cache if it exists and is less than 10 minutes old
         if (cachedFolders && cachedFolders.length > 0 && cacheTime) {
           const cacheAge = Date.now() - cacheTime;
           const tenMinutes = 10 * 60 * 1000;
 
           if (cacheAge < tenMinutes) {
-            console.log(
-              `[DatenspeicherSelector] Using cached folders (${
-                cachedFolders.length
-              } items, age: ${Math.round(cacheAge / 1000)}s)`
-            );
+            console.log(`[DatenspeicherSelector] Using cached folders`);
             this.folders = cachedFolders;
-
-            // Update UI if dropdown is open
-            if (this.isOpen) {
-              this.renderFolders();
-            }
+            if (this.isOpen) this.renderFolders();
             return;
-          } else {
-            console.log(
-              "[DatenspeicherSelector] Cache expired, fetching fresh data"
-            );
           }
-        } else {
-          console.log(
-            "[DatenspeicherSelector] No valid cache found, fetching from API"
-          );
         }
       }
 
-      const domain =
-        this.store.get("auth.domain") || this.store.get("auth.activeDomain");
-
-      if (!domain) {
-        console.error("[DatenspeicherSelector] No domain configured");
-        // Try to use cached data even if no domain
+      // Check if authenticated first
+      const isAuth = await window.APIService.checkAuth();
+      if (!isAuth) {
+        console.log("[DatenspeicherSelector] Not authenticated, using cache");
         const cachedFolders = this.store.get("datenspeicher.available");
-        if (cachedFolders && cachedFolders.length > 0) {
-          console.log(
-            "[DatenspeicherSelector] Using cached folders (no domain)"
-          );
+        if (cachedFolders) {
           this.folders = cachedFolders;
-          if (this.isOpen) {
-            this.renderFolders();
-          }
+          if (this.isOpen) this.renderFolders();
         }
         return;
       }
 
-      const url = `https://${domain}.506.ai/api/folders`;
-      console.log("[DatenspeicherSelector] Fetching folders from API:", url);
+      console.log("[DatenspeicherSelector] Loading folders via APIService");
 
-      // Use background script to make authenticated request
-      const response = await chrome.runtime.sendMessage({
-        type: "API_REQUEST",
-        data: {
-          url,
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-        },
-      });
-
-      if (!response?.success) {
-        throw new Error(response?.error || "Failed to fetch folders");
-      }
+      // USE THE APISERVICE!
+      const allFolders = await window.APIService.fetchFolders();
 
       // Filter only MEDIA type folders
-      this.folders =
-        response.data.folders?.filter((f) => f.type === "MEDIA") || [];
+      this.folders = allFolders.filter((f) => f.type === "MEDIA") || [];
 
       console.log(
-        `[DatenspeicherSelector] Loaded ${this.folders.length} MEDIA folders from API`
+        `[DatenspeicherSelector] Loaded ${this.folders.length} MEDIA folders`
       );
 
-      // Store in cache (will be auto-persisted by AppStore)
+      // Cache them
       this.store.set("datenspeicher.available", this.folders);
       this.store.set("datenspeicher.cacheTime", Date.now());
 
-      // Update UI if dropdown is open
-      if (this.isOpen) {
-        this.renderFolders();
-      }
+      if (this.isOpen) this.renderFolders();
     } catch (error) {
       console.error("[DatenspeicherSelector] Failed to load folders:", error);
 
-      // Try to use cached data as fallback
+      // Use cache as fallback
       const cachedFolders = this.store.get("datenspeicher.available");
       if (cachedFolders && cachedFolders.length > 0) {
         console.log("[DatenspeicherSelector] Using cached folders as fallback");
         this.folders = cachedFolders;
-        if (this.isOpen) {
-          this.renderFolders();
-        }
+        if (this.isOpen) this.renderFolders();
+      } else if (error.message.includes("No domain configured")) {
+        console.log("[DatenspeicherSelector] Not logged in, skipping");
       } else {
         this.showError("Fehler beim Laden der Datenspeicher");
       }
     }
   }
-
   /**
    * Render folders in the dropdown
    */

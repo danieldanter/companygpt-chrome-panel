@@ -5,6 +5,7 @@ import { ContextManager } from "./modules/context-manager.js";
 import { DatenspeicherSelector } from "./modules/datenspeicher-selector.js";
 import { ProcessMessage } from "./modules/process-message.js";
 import { debounce } from "./modules/utils.js"; // ADD THIS LINE!
+import { AudioRecorder } from "./modules/audio-recorder.js";
 
 class CompanyGPTChat {
   constructor() {
@@ -16,6 +17,8 @@ class CompanyGPTChat {
     this.messageRenderer = null;
     this.contextManager = null;
     this.processMessage = new ProcessMessage();
+    this.audioRecorder = new AudioRecorder(this.store);
+    this.uploadFolderId = null;
 
     // Cache UI element refs
     this.elements = {};
@@ -79,7 +82,7 @@ class CompanyGPTChat {
       // Initialize ContextManager AFTER UI setup
       this.contextManager = new ContextManager(this);
 
-      // NEW: Initialize DatenspeicherSelector after ContextManager
+      // Initialize DatenspeicherSelector after ContextManager
       try {
         this.datenspeicherSelector = new DatenspeicherSelector(this.store);
         console.log("[App] DatenspeicherSelector initialized");
@@ -87,6 +90,16 @@ class CompanyGPTChat {
         console.warn(
           "[App] DatenspeicherSelector could not be initialized:",
           dsErr
+        );
+      }
+
+      // 🔹 Initialize Upload View
+      if (typeof this.initializeUploadView === "function") {
+        await this.initializeUploadView();
+        console.log("[App] Upload View initialized");
+      } else {
+        console.warn(
+          "[App] initializeUploadView() not found — skipping Upload init"
         );
       }
 
@@ -147,6 +160,267 @@ class CompanyGPTChat {
     }
   }
 
+  async initializeUploadView() {
+    console.log("[App] Initializing upload view...");
+
+    // Initialize AudioRecorder
+    this.audioRecorder = new AudioRecorder(this.store);
+
+    // Initialize with UI elements
+    this.audioRecorder.init({
+      recordButton: document.getElementById("btn-record"),
+      timerDisplay: document.querySelector(".recording-time .time-display"),
+      playbackControls: document.getElementById("playback-controls"),
+      audioPlayer: document.getElementById("audio-player"),
+      uploadButton: document.getElementById("btn-upload-audio"),
+      filenameInput: document.getElementById("upload-filename"),
+    });
+
+    // Set up event listeners
+    this.setupUploadListeners();
+
+    // Generate default filename
+    this.updateDefaultFilename();
+
+    console.log("[App] Upload view initialized");
+  }
+
+  // In app.js, add these methods to your CompanyGPTChat class:
+
+  async initializeUploadView() {
+    console.log("[App] Initializing upload view...");
+
+    // Initialize AudioRecorder
+    this.audioRecorder = new AudioRecorder(this.store);
+
+    // Initialize with UI elements
+    this.audioRecorder.init({
+      recordButton: document.getElementById("btn-record"),
+      timerDisplay: document.querySelector(".recording-time .time-display"),
+      playbackControls: document.getElementById("playback-controls"),
+      audioPlayer: document.getElementById("audio-player"),
+      uploadButton: document.getElementById("btn-upload-audio"),
+      filenameInput: document.getElementById("upload-filename"),
+    });
+
+    // Set up event listeners
+    this.setupUploadListeners();
+
+    // Generate default filename
+    this.updateDefaultFilename();
+
+    console.log("[App] Upload view initialized");
+  }
+
+  setupUploadListeners() {
+    // Tab switching
+    document.querySelectorAll(".upload-tab").forEach((tab) => {
+      tab.addEventListener("click", (e) => {
+        // Remove active from all tabs and contents
+        document
+          .querySelectorAll(".upload-tab")
+          .forEach((t) => t.classList.remove("active"));
+        document
+          .querySelectorAll(".tab-content")
+          .forEach((c) => (c.style.display = "none"));
+
+        // Add active to clicked tab
+        tab.classList.add("active");
+        const tabName = tab.dataset.tab;
+        const content = document.querySelector(`[data-content="${tabName}"]`);
+        if (content) {
+          content.style.display = "block";
+        }
+
+        // Update store
+        this.store.set("upload.activeTab", tabName);
+      });
+    });
+
+    // Record button
+    document
+      .getElementById("btn-record")
+      ?.addEventListener("click", async () => {
+        if (this.audioRecorder.mediaRecorder?.state === "recording") {
+          this.audioRecorder.stopRecording();
+        } else if (this.audioRecorder.audioBlob) {
+          // Has recording, start new one
+          this.audioRecorder.reset();
+          await this.audioRecorder.startRecording();
+        } else {
+          // Start recording
+          await this.audioRecorder.startRecording();
+        }
+      });
+
+    // In setupUploadListeners, add:
+    document.addEventListener("click", (e) => {
+      const uploadDropdown = document.getElementById(
+        "upload-datenspeicher-dropdown"
+      );
+      const uploadButton = document.getElementById("upload-folder-select");
+
+      if (
+        uploadDropdown &&
+        !uploadDropdown.contains(e.target) &&
+        !uploadButton.contains(e.target)
+      ) {
+        uploadDropdown.classList.remove("show");
+      }
+    });
+
+    // Upload audio button
+    document
+      .getElementById("btn-upload-audio")
+      ?.addEventListener("click", () => {
+        this.uploadAudio();
+      });
+
+    // Delete audio button
+    document
+      .getElementById("btn-delete-audio")
+      ?.addEventListener("click", () => {
+        this.audioRecorder.reset();
+      });
+
+    // Folder selection
+    document
+      .getElementById("upload-folder-select")
+      ?.addEventListener("click", () => {
+        this.openFolderSelector();
+      });
+
+    // URL crawl button
+    document.getElementById("btn-crawl-url")?.addEventListener("click", () => {
+      this.crawlUrl();
+    });
+
+    // Filename input - update store on change
+    document
+      .getElementById("upload-filename")
+      ?.addEventListener("input", (e) => {
+        this.store.set("upload.filename", e.target.value);
+      });
+  }
+
+  updateDefaultFilename() {
+    const now = new Date();
+    const timestamp = `${now.getFullYear()}-${String(
+      now.getMonth() + 1
+    ).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}T${String(
+      now.getHours()
+    ).padStart(2, "0")}-${String(now.getMinutes()).padStart(2, "0")}-${String(
+      now.getSeconds()
+    ).padStart(2, "0")}`;
+    const filename = `aufnahme-${timestamp}`;
+
+    const input = document.getElementById("upload-filename");
+    if (input) {
+      input.value = filename;
+      this.store.set("upload.filename", filename);
+    }
+  }
+
+  // In app.js, replace the openFolderSelector method:
+
+  // In app.js, replace openFolderSelector with this simpler version:
+
+  async openFolderSelector() {
+    console.log("[App] Opening upload folder selector");
+
+    const button = document.getElementById("upload-folder-select");
+    if (!button) return;
+
+    // Get the ALREADY LOADED folders from your existing datenspeicherSelector
+    const folders = this.datenspeicherSelector?.folders || [];
+    console.log("[App] Using existing folders:", folders.length);
+
+    // Check if dropdown exists
+    let dropdown = button.parentElement.querySelector(
+      ".datenspeicher-dropdown"
+    );
+
+    if (!dropdown) {
+      dropdown = document.createElement("div");
+      dropdown.className = "datenspeicher-dropdown";
+      dropdown.innerHTML = `
+        <div class="dropdown-list">
+          <div class="dropdown-loading">Lade Datenspeicher...</div>
+        </div>
+      `;
+      button.parentElement.appendChild(dropdown);
+    }
+
+    // Toggle visibility
+    dropdown.classList.toggle("show");
+
+    if (dropdown.classList.contains("show")) {
+      const list = dropdown.querySelector(".dropdown-list");
+
+      // If we have folders, show them
+      if (folders.length > 0) {
+        list.innerHTML = folders
+          .map(
+            (folder) => `
+          <div class="dropdown-item" data-folder-id="${folder.id}">
+            <span class="dropdown-item-name">${folder.name}</span>
+          </div>
+        `
+          )
+          .join("");
+      } else {
+        // If no folders yet, load them using the existing method
+        await this.datenspeicherSelector.loadFolders();
+        const loadedFolders = this.datenspeicherSelector.folders || [];
+
+        if (loadedFolders.length > 0) {
+          list.innerHTML = loadedFolders
+            .map(
+              (folder) => `
+            <div class="dropdown-item" data-folder-id="${folder.id}">
+              <span class="dropdown-item-name">${folder.name}</span>
+            </div>
+          `
+            )
+            .join("");
+        } else {
+          list.innerHTML =
+            '<div class="dropdown-empty">Keine Datenspeicher</div>';
+        }
+      }
+
+      // Simple click handler
+      list.onclick = (e) => {
+        const item = e.target.closest(".dropdown-item");
+        if (!item) return;
+
+        const folderId = item.dataset.folderId;
+        const folderName = item.textContent.trim();
+
+        // Update UI
+        document.getElementById("upload-folder-text").textContent = folderName;
+
+        // Store selection
+        this.uploadFolderId = folderId;
+        this.store.set("upload.selectedFolderId", folderId);
+
+        // Close dropdown
+        dropdown.classList.remove("show");
+
+        console.log("[App] Selected:", folderName, folderId);
+      };
+    }
+
+    // Close on outside click
+    setTimeout(() => {
+      document.addEventListener("click", function closeHandler(e) {
+        if (!button.contains(e.target) && !dropdown.contains(e.target)) {
+          dropdown.classList.remove("show");
+          document.removeEventListener("click", closeHandler);
+        }
+      });
+    }, 10);
+  }
   setupEventListeners() {
     // Icon button navigation
     this.elements.btnChat?.addEventListener("click", () => {

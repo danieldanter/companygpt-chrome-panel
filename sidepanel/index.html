@@ -93,31 +93,9 @@
           <div class="message assistant">
             Hallo! Ich kann Fragen zur aktuellen Seite beantworten. ✨
           </div>
-
-          <!-- Example user message -->
-          <div class="message user">
-            Suche mir bitte die wichtigsten Abschnitte auf dieser Seite
-            zusammen.
-          </div>
-
-          <!-- Permission request -->
-          <div class="message assistant">
-            <div class="permission-request">
-              <div>Berechtigung erforderlich</div>
-              <div class="permission-text">
-                Ich benötige deine Zustimmung, um Seiteninhalte zu lesen (nur
-                sichtbar, wenn aktiviert).
-              </div>
-              <div class="permission-buttons">
-                <button class="btn-allow">Erlauben</button>
-                <button class="btn-deny">Ablehnen</button>
-              </div>
-            </div>
-          </div>
         </div>
       </main>
 
-      <!-- Upload View (hidden initially) -->
       <!-- Upload View (hidden initially) -->
       <div class="upload-container" id="view-upload" style="display: none">
         <!-- Common fields at top -->
@@ -155,23 +133,68 @@
           <!-- Audio tab content -->
           <div class="tab-content active" data-content="audio">
             <div class="audio-recorder">
+              <!-- Initial state: Record button -->
               <button class="record-button" id="btn-record">
                 <svg
                   width="24"
                   height="24"
                   viewBox="0 0 24 24"
                   fill="currentColor"
+                  class="record-icon"
                 >
                   <circle cx="12" cy="12" r="10" />
                 </svg>
-                <span>Aufnahme starten</span>
+                <span class="record-text">Aufnahme starten</span>
               </button>
+
+              <!-- Recording timer (hidden initially) -->
               <div
                 class="recording-time"
                 id="recording-time"
                 style="display: none"
               >
-                00:00
+                <span class="time-display">0:00</span>
+              </div>
+
+              <!-- Playback controls (hidden initially) -->
+              <div
+                class="playback-controls"
+                id="playback-controls"
+                style="display: none"
+              >
+                <audio id="audio-player" controls></audio>
+                <div class="playback-actions">
+                  <button class="btn-upload-audio" id="btn-upload-audio">
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    Aufnahme uploaden
+                  </button>
+                  <button class="btn-delete-audio" id="btn-delete-audio">
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <polyline points="3 6 5 6 21 6" />
+                      <path
+                        d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+                      />
+                    </svg>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -185,14 +208,16 @@
                 class="upload-input"
                 id="url-input"
               />
-              <button class="upload-button">URL crawlen</button>
+              <button class="upload-button" id="btn-crawl-url">
+                URL crawlen
+              </button>
             </div>
           </div>
 
           <!-- Screen tab content (hidden) -->
           <div class="tab-content" data-content="screen" style="display: none">
             <div class="screen-recorder">
-              <button class="record-button">Bildschirmaufnahme starten</button>
+              <p class="placeholder-text">Bildschirmaufnahme - Kommt bald</p>
             </div>
           </div>
         </div>
