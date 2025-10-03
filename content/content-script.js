@@ -703,6 +703,26 @@
         `[ContentExtractor] Starting extraction #${this.extractionCount}`
       );
 
+      // Get the model limit from options or use a reasonable default
+      const maxLength = options.modelLimit || options.maxLength || 190000;
+      console.log(`[ContentExtractor] Using content limit: ${maxLength} chars`);
+
+      // Helper: smartly truncate long text near a boundary
+      const smartTruncate = (text, limit) => {
+        if (!text || text.length <= limit)
+          return { content: text, truncated: false };
+
+        let content = text.substring(0, limit);
+        const lastNewline = content.lastIndexOf("\n\n");
+        const lastPeriod = content.lastIndexOf(".");
+        if (lastNewline > limit * 0.8) {
+          content = content.substring(0, lastNewline);
+        } else if (lastPeriod > limit * 0.8) {
+          content = content.substring(0, lastPeriod + 1);
+        }
+        return { content, truncated: true };
+      };
+
       // Base result
       let result = {
         url: window.location.href, // Use current window URL
@@ -725,12 +745,14 @@
       try {
         // Route to appropriate extractor
         switch (this.siteConfig.type) {
-          case "google-docs":
-            result = { ...result, ...(await this.extractGoogleDocs()) };
+          case "google-docs": {
+            const docsRes = await this.extractGoogleDocs();
+            result = { ...result, ...docsRes };
             break;
+          }
 
           case "gmail":
-          case "outlook":
+          case "outlook": {
             if (this.emailHandler) {
               const emailData = this.emailHandler.extract();
               const formatted = this.emailHandler.formatContent(emailData);
@@ -748,20 +770,70 @@
                 },
               };
             } else {
-              result = { ...result, ...this.extractGeneric() };
+              // Fallback to generic with smart truncation
+              const fullText = document.body?.innerText || "";
+              const { content, truncated } = smartTruncate(fullText, maxLength);
+              result = {
+                ...result,
+                content,
+                metadata: {
+                  ...result.metadata,
+                  method: "generic-fallback",
+                  originalLength: fullText.length,
+                  extractedLength: content.length,
+                  truncated,
+                },
+              };
             }
             break;
+          }
 
-          case "sharepoint":
-            result = { ...result, ...(await this.extractSharePoint()) };
+          case "sharepoint": {
+            const spRes = await this.extractSharePoint();
+            result = { ...result, ...spRes };
             break;
+          }
 
-          case "companygpt":
-            result = { ...result, ...this.extractCompanyGPT() };
+          case "companygpt": {
+            const cgptRes = this.extractCompanyGPT();
+            result = { ...result, ...cgptRes };
             break;
+          }
 
-          default:
-            result = { ...result, ...this.extractGeneric() };
+          case "generic": {
+            // Explicit generic: apply smart truncation
+            const fullText = document.body?.innerText || "";
+            const { content, truncated } = smartTruncate(fullText, maxLength);
+            result = {
+              ...result,
+              content,
+              metadata: {
+                ...result.metadata,
+                method: "generic",
+                originalLength: fullText.length,
+                extractedLength: content.length,
+                truncated,
+              },
+            };
+            break;
+          }
+
+          default: {
+            // Default: treat as generic with smart truncation
+            const fullText = document.body?.innerText || "";
+            const { content, truncated } = smartTruncate(fullText, maxLength);
+            result = {
+              ...result,
+              content,
+              metadata: {
+                ...result.metadata,
+                method: "default-generic",
+                originalLength: fullText.length,
+                extractedLength: content.length,
+                truncated,
+              },
+            };
+          }
         }
 
         result.success = true;

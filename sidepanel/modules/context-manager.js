@@ -432,22 +432,40 @@ export class ContextManager {
         injectionError
       );
 
-      // Fallback to one-time injection
+      // Fallback to one-time injection with proper limit
+      const modelLimit =
+        this.store.get("chat.selectedModel.maxLength") || 190000;
+
       const results = await chrome.scripting.executeScript({
         target: { tabId },
-        func: () => {
-          // Minimal extraction for fallback
+        func: (limit) => {
+          // Get all text content
+          let fullText = document.body.innerText || "";
+
+          // Apply smart truncation if needed
+          if (fullText.length > limit) {
+            // Try to cut at a sentence boundary
+            fullText = fullText.substring(0, limit);
+            const lastPeriod = fullText.lastIndexOf(".");
+            if (lastPeriod > limit * 0.8) {
+              fullText = fullText.substring(0, lastPeriod + 1);
+            }
+          }
+
           return {
             success: true,
             title: document.title,
             url: window.location.href,
             selectedText: window.getSelection().toString(),
-            mainContent: document.body.innerText.substring(0, 5000),
+            mainContent: fullText, // No arbitrary 5000 char limit!
             metadata: {
               method: "emergency-injection",
+              originalLength: document.body.innerText.length,
+              truncated: fullText.length < document.body.innerText.length,
             },
           };
         },
+        args: [modelLimit],
       });
 
       return results[0].result;
