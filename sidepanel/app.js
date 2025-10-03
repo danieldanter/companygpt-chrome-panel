@@ -30,6 +30,10 @@ class CompanyGPTChat {
   setupStateSubscriptions() {
     console.log("[App] Setting up state subscriptions...");
 
+    this.store.subscribe("chat.selectedModel", (model) => {
+      console.log("[App] Model state changed:", model);
+      this.updateModelIndicator();
+    });
     // Auth state changes
     this.store.subscribe("auth.isAuthenticated", (isAuth) => {
       console.log("[App] Auth state changed:", isAuth);
@@ -72,6 +76,8 @@ class CompanyGPTChat {
     try {
       // Initialize modules (but not chat controller yet)
       this.messageRenderer = new MessageRenderer();
+
+      await this.initializeModelSelection();
 
       // Setup UI elements FIRST
       this.setupUIElements();
@@ -196,87 +202,108 @@ class CompanyGPTChat {
       tokensDisplay.textContent = `${(currentModel.tokenLimit / 1000).toFixed(
         0
       )}k tokens`;
-
-      // Also update the header indicator
-      this.updateModelIndicator();
     }
 
     // Populate dropdown menu
     dropdownMenu.innerHTML = models
       .map(
         (model) => `
-      <div class="model-dropdown-option ${
-        model.id === currentModelId ? "selected" : ""
-      }" 
-          data-model-id="${model.id}">
-        <span class="model-option-name">${model.name}</span>
-        <span class="model-option-tokens">${(model.tokenLimit / 1000).toFixed(
-          0
-        )}k tokens</span>
-        ${
-          model.id === currentModelId
-            ? '<span class="model-option-check">✓</span>'
-            : ""
-        }
-      </div>
-    `
+        <div class="model-dropdown-option ${
+          model.id === currentModelId ? "selected" : ""
+        }" 
+            data-model-id="${model.id}">
+          <span class="model-option-name">${model.name}</span>
+          <span class="model-option-tokens">${(model.tokenLimit / 1000).toFixed(
+            0
+          )}k tokens</span>
+          ${
+            model.id === currentModelId
+              ? '<span class="model-option-check">✓</span>'
+              : ""
+          }
+        </div>
+      `
       )
       .join("");
 
+    // Remove existing event listeners to prevent duplicates
+    const newDropdownButton = dropdownButton.cloneNode(true);
+    dropdownButton.parentNode.replaceChild(newDropdownButton, dropdownButton);
+
     // Toggle dropdown
-    dropdownButton.addEventListener("click", (e) => {
+    newDropdownButton.addEventListener("click", (e) => {
       e.stopPropagation();
       const isOpen = dropdownMenu.style.display !== "none";
       dropdownMenu.style.display = isOpen ? "none" : "block";
-      dropdownButton.classList.toggle("open", !isOpen);
+      newDropdownButton.classList.toggle("open", !isOpen);
+      console.log("[App] Dropdown toggled:", !isOpen ? "open" : "closed");
     });
 
-    // Handle selection
+    // Handle selection - use event delegation
     dropdownMenu.addEventListener("click", (e) => {
       const option = e.target.closest(".model-dropdown-option");
-      if (option) {
-        const modelId = option.dataset.modelId;
-        this.handleModelChange(modelId);
-        dropdownMenu.style.display = "none";
-        dropdownButton.classList.remove("open");
+      if (!option) return;
 
-        // Update dropdown button display
-        const model = window.ModelsConfig.getById(modelId);
-        if (model) {
-          currentDisplay.textContent = model.name;
+      const modelId = option.dataset.modelId;
+      console.log("[App] Model option clicked:", modelId);
+
+      this.handleModelChange(modelId);
+      dropdownMenu.style.display = "none";
+      newDropdownButton.classList.remove("open");
+
+      // Update dropdown button display immediately
+      const model = window.ModelsConfig.getById(modelId);
+      if (model) {
+        const currentDisplay = document.getElementById(
+          "model-dropdown-current"
+        );
+        const tokensDisplay = document.getElementById("model-dropdown-tokens");
+
+        if (currentDisplay) currentDisplay.textContent = model.name;
+        if (tokensDisplay) {
           tokensDisplay.textContent = `${(model.tokenLimit / 1000).toFixed(
             0
           )}k tokens`;
+        }
 
-          // Update selected state
-          dropdownMenu
-            .querySelectorAll(".model-dropdown-option")
-            .forEach((opt) => {
-              opt.classList.remove("selected");
-              const check = opt.querySelector(".model-option-check");
-              if (check) check.remove();
-            });
-          option.classList.add("selected");
-          if (!option.querySelector(".model-option-check")) {
-            option.insertAdjacentHTML(
-              "beforeend",
-              '<span class="model-option-check">✓</span>'
-            );
-          }
+        // Update selected state in dropdown
+        dropdownMenu
+          .querySelectorAll(".model-dropdown-option")
+          .forEach((opt) => {
+            opt.classList.remove("selected");
+            const check = opt.querySelector(".model-option-check");
+            if (check) check.remove();
+          });
+
+        option.classList.add("selected");
+        if (!option.querySelector(".model-option-check")) {
+          option.insertAdjacentHTML(
+            "beforeend",
+            '<span class="model-option-check">✓</span>'
+          );
         }
       }
     });
 
-    // Close dropdown when clicking outside
-    document.addEventListener("click", (e) => {
-      if (
-        !dropdownButton.contains(e.target) &&
-        !dropdownMenu.contains(e.target)
-      ) {
-        dropdownMenu.style.display = "none";
-        dropdownButton.classList.remove("open");
-      }
-    });
+    // Close dropdown when clicking outside - use capture phase
+    document.addEventListener(
+      "click",
+      (e) => {
+        const dropdownButton = document.getElementById("model-dropdown-button");
+        const dropdownMenu = document.getElementById("model-dropdown-menu");
+
+        if (
+          dropdownButton &&
+          dropdownMenu &&
+          !dropdownButton.contains(e.target) &&
+          !dropdownMenu.contains(e.target)
+        ) {
+          dropdownMenu.style.display = "none";
+          dropdownButton.classList.remove("open");
+        }
+      },
+      true
+    ); // Use capture phase
 
     console.log("[App] Model selection dropdown initialized");
   }
@@ -319,7 +346,7 @@ class CompanyGPTChat {
       return;
     }
 
-    // Update settings
+    // Update settings in store
     this.store.set("settings.modelSelection.selectedModelId", modelId);
     this.store.set("settings.modelSelection.lastChanged", Date.now());
 
@@ -337,16 +364,19 @@ class CompanyGPTChat {
       "success"
     );
 
-    // Update header indicator if it exists
+    // Update indicator immediately
     this.updateModelIndicator();
+
+    console.log("[App] Model change complete");
   }
 
   // Update model indicator in chat header
+  // Update model indicator in chat header
   updateModelIndicator() {
+    // Get the model from the store (single source of truth)
     const model = this.store.get("chat.selectedModel");
     console.log("[App] Updating model indicator with model:", model?.name);
 
-    // Try multiple selectors to be sure
     const indicatorById = document.getElementById("model-indicator");
     const indicatorByClass = document.querySelector(
       ".header-left .model-indicator"
@@ -354,23 +384,18 @@ class CompanyGPTChat {
 
     console.log("[App] Found by ID:", indicatorById);
     console.log("[App] Found by class:", indicatorByClass);
-    console.log("[App] Current text:", indicatorById?.textContent);
 
-    // Update both just to be safe
     if (indicatorById && model) {
       indicatorById.textContent = model.name;
+      // Force attribute update to prevent any caching issues
+      indicatorById.setAttribute("data-model-id", model.id);
     }
     if (indicatorByClass && model) {
       indicatorByClass.textContent = model.name;
+      indicatorByClass.setAttribute("data-model-id", model.id);
     }
 
-    // Force a check after update
-    setTimeout(() => {
-      console.log(
-        "[App] Text after update:",
-        document.getElementById("model-indicator")?.textContent
-      );
-    }, 100);
+    // No need for the setTimeout check - trust the state
   }
 
   async initializeUploadView() {
