@@ -35,10 +35,11 @@
       currentIntent: null, // 'email-reply', 'doc-summary', etc.
       folderId: null,
       roleId: null,
-      model: {
+      selectedModel: {
         id: "gemini-2.5-flash",
         name: "Gemini 2.5 Flash",
-        maxLength: 950000,
+        maxLength: 980000, // Updated to match actual limit
+        tokenLimit: 980000,
       },
       lastUserIntent: null,
       // ADD THE NEW PROPERTIES HERE ↓↓↓
@@ -99,6 +100,10 @@
         senderName: "", // e.g., "Max Mustermann"
         senderRole: "", // e.g., "Support Team"
         signature: "", // For future: full signature text
+      },
+      modelSelection: {
+        selectedModelId: "gemini-2.5-flash", // Persisted selection
+        lastChanged: null,
       },
     },
 

@@ -13,6 +13,9 @@
       <header class="header">
         <div class="header-left">
           <span class="preview-badge">PREVIEW</span>
+          <span class="model-indicator" id="model-indicator"
+            >Gemini 2.5 Flash</span
+          >
         </div>
 
         <div class="header-right">
@@ -297,6 +300,40 @@
           <div class="setting-label">Version</div>
           <div class="setting-value">1.0.0</div>
         </div>
+
+        <h3 style="margin-top: 20px">Sprachmodell</h3>
+
+        <div class="model-selection-container" id="model-selection">
+          <div class="model-dropdown-container">
+            <button class="model-dropdown-button" id="model-dropdown-button">
+              <span class="model-dropdown-current" id="model-dropdown-current"
+                >Gemini 2.5 Flash</span
+              >
+              <span class="model-dropdown-tokens" id="model-dropdown-tokens"
+                >980k tokens</span
+              >
+              <svg
+                class="model-dropdown-arrow"
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+            <div
+              class="model-dropdown-menu"
+              id="model-dropdown-menu"
+              style="display: none"
+            >
+              <!-- Options will be populated here -->
+            </div>
+          </div>
+        </div>
+
         <h3 style="margin-top: 20px">Email Konfiguration</h3>
 
         <div class="setting-item">
@@ -532,6 +569,7 @@
 
     <!-- Core state management -->
     <script src="../shared/config.js"></script>
+    <script src="../shared/models-config.js"></script>
     <script src="../shared/state-manager.js"></script>
     <script src="../shared/app-store.js"></script>
     <script src="../shared/devtools.js"></script>

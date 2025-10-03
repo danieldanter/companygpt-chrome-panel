@@ -10,14 +10,6 @@ export class ChatController {
     this.isInitialized = false;
     this.abortController = null;
 
-    // CompanyGPT model config
-    this.model = {
-      id: "gemini-2.5-flash",
-      name: "Gemini 2.5 Flash",
-      maxLength: 950000,
-      tokenLimit: 950000,
-    };
-
     // Debug flag
     this.debug = true;
 
@@ -43,6 +35,17 @@ export class ChatController {
 
     // We don't need to manually sync anymore - just read from store when needed
     // The store is our single source of truth
+  }
+
+  getCurrentModel() {
+    return (
+      this.store.get("chat.selectedModel") || {
+        id: "gemini-2.5-flash",
+        name: "Gemini 2.5 Flash",
+        maxLength: 980000,
+        tokenLimit: 980000,
+      }
+    );
   }
 
   /**
@@ -518,7 +521,7 @@ ${context.content || context.mainContent}
           sources: [],
         },
       ],
-      model: this.model,
+      model: this.getCurrentModel(),
       name: "Isolated Query",
       roleId: this.store.get("chat.roleId"),
       selectedAssistantId: "",
@@ -814,7 +817,7 @@ ${emailSignature}`
             references: msg.references || [],
             sources: msg.sources || [],
           })),
-        model: this.model,
+        model: this.getCurrentModel(),
         name: "Neuer Chat",
         roleId: this.store.get("chat.roleId"),
         selectedAssistantId: "",

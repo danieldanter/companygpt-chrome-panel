@@ -82,6 +82,15 @@ class CompanyGPTChat {
       // Initialize ContextManager AFTER UI setup
       this.contextManager = new ContextManager(this);
 
+      await this.initializeModelSelection();
+      const currentModel = this.store.get("chat.selectedModel");
+      if (currentModel) {
+        const indicator = document.getElementById("model-indicator");
+        if (indicator) {
+          indicator.textContent = currentModel.name;
+        }
+      }
+
       // Initialize DatenspeicherSelector after ContextManager
       try {
         this.datenspeicherSelector = new DatenspeicherSelector(this.store);
@@ -158,6 +167,210 @@ class CompanyGPTChat {
     if (missing.length > 0) {
       console.warn("[App] Missing UI elements:", missing);
     }
+  }
+
+  // Initialize model selection UI
+  async initializeModelSelection() {
+    console.log("[App] Initializing model selection...");
+
+    const models = window.ModelsConfig.getAll();
+    const currentModelId =
+      this.store.get("settings.modelSelection.selectedModelId") ||
+      "gemini-2.5-flash";
+    const currentModel = window.ModelsConfig.getById(currentModelId);
+
+    // Update dropdown button with current selection
+    const dropdownButton = document.getElementById("model-dropdown-button");
+    const dropdownMenu = document.getElementById("model-dropdown-menu");
+    const currentDisplay = document.getElementById("model-dropdown-current");
+    const tokensDisplay = document.getElementById("model-dropdown-tokens");
+
+    if (!dropdownButton || !dropdownMenu) {
+      console.warn("[App] Dropdown elements not found");
+      return;
+    }
+
+    // Set current model display
+    if (currentModel) {
+      currentDisplay.textContent = currentModel.name;
+      tokensDisplay.textContent = `${(currentModel.tokenLimit / 1000).toFixed(
+        0
+      )}k tokens`;
+
+      // Also update the header indicator
+      this.updateModelIndicator();
+    }
+
+    // Populate dropdown menu
+    dropdownMenu.innerHTML = models
+      .map(
+        (model) => `
+      <div class="model-dropdown-option ${
+        model.id === currentModelId ? "selected" : ""
+      }" 
+          data-model-id="${model.id}">
+        <span class="model-option-name">${model.name}</span>
+        <span class="model-option-tokens">${(model.tokenLimit / 1000).toFixed(
+          0
+        )}k tokens</span>
+        ${
+          model.id === currentModelId
+            ? '<span class="model-option-check">✓</span>'
+            : ""
+        }
+      </div>
+    `
+      )
+      .join("");
+
+    // Toggle dropdown
+    dropdownButton.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isOpen = dropdownMenu.style.display !== "none";
+      dropdownMenu.style.display = isOpen ? "none" : "block";
+      dropdownButton.classList.toggle("open", !isOpen);
+    });
+
+    // Handle selection
+    dropdownMenu.addEventListener("click", (e) => {
+      const option = e.target.closest(".model-dropdown-option");
+      if (option) {
+        const modelId = option.dataset.modelId;
+        this.handleModelChange(modelId);
+        dropdownMenu.style.display = "none";
+        dropdownButton.classList.remove("open");
+
+        // Update dropdown button display
+        const model = window.ModelsConfig.getById(modelId);
+        if (model) {
+          currentDisplay.textContent = model.name;
+          tokensDisplay.textContent = `${(model.tokenLimit / 1000).toFixed(
+            0
+          )}k tokens`;
+
+          // Update selected state
+          dropdownMenu
+            .querySelectorAll(".model-dropdown-option")
+            .forEach((opt) => {
+              opt.classList.remove("selected");
+              const check = opt.querySelector(".model-option-check");
+              if (check) check.remove();
+            });
+          option.classList.add("selected");
+          if (!option.querySelector(".model-option-check")) {
+            option.insertAdjacentHTML(
+              "beforeend",
+              '<span class="model-option-check">✓</span>'
+            );
+          }
+        }
+      }
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener("click", (e) => {
+      if (
+        !dropdownButton.contains(e.target) &&
+        !dropdownMenu.contains(e.target)
+      ) {
+        dropdownMenu.style.display = "none";
+        dropdownButton.classList.remove("open");
+      }
+    });
+
+    console.log("[App] Model selection dropdown initialized");
+  }
+
+  showNotification(message, type = "info") {
+    console.log(`[App] ${type.toUpperCase()}: ${message}`);
+
+    // Create a temporary notification element
+    const notification = document.createElement("div");
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+    notification.style.cssText = `
+      position: fixed;
+      top: 60px;
+      right: 20px;
+      padding: 12px 20px;
+      background: ${type === "success" ? "#22c55e" : "#0ea5e9"};
+      color: white;
+      border-radius: 8px;
+      z-index: 1000;
+      animation: slideIn 0.3s ease;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    `;
+
+    document.body.appendChild(notification);
+
+    setTimeout(() => {
+      notification.style.opacity = "0";
+      notification.style.transform = "translateX(100px)";
+      setTimeout(() => notification.remove(), 300);
+    }, 3000);
+  }
+  // Handle model selection change
+  handleModelChange(modelId) {
+    console.log("[App] Model changed to:", modelId);
+
+    const model = window.ModelsConfig.getById(modelId);
+    if (!model) {
+      console.error("[App] Invalid model ID:", modelId);
+      return;
+    }
+
+    // Update settings
+    this.store.set("settings.modelSelection.selectedModelId", modelId);
+    this.store.set("settings.modelSelection.lastChanged", Date.now());
+
+    // Update chat state with full model object
+    this.store.set("chat.selectedModel", {
+      id: model.id,
+      name: model.name,
+      maxLength: model.maxLength,
+      tokenLimit: model.tokenLimit,
+    });
+
+    // Show confirmation
+    this.showNotification(
+      `Sprachmodell gewechselt zu ${model.name}`,
+      "success"
+    );
+
+    // Update header indicator if it exists
+    this.updateModelIndicator();
+  }
+
+  // Update model indicator in chat header
+  updateModelIndicator() {
+    const model = this.store.get("chat.selectedModel");
+    console.log("[App] Updating model indicator with model:", model?.name);
+
+    // Try multiple selectors to be sure
+    const indicatorById = document.getElementById("model-indicator");
+    const indicatorByClass = document.querySelector(
+      ".header-left .model-indicator"
+    );
+
+    console.log("[App] Found by ID:", indicatorById);
+    console.log("[App] Found by class:", indicatorByClass);
+    console.log("[App] Current text:", indicatorById?.textContent);
+
+    // Update both just to be safe
+    if (indicatorById && model) {
+      indicatorById.textContent = model.name;
+    }
+    if (indicatorByClass && model) {
+      indicatorByClass.textContent = model.name;
+    }
+
+    // Force a check after update
+    setTimeout(() => {
+      console.log(
+        "[App] Text after update:",
+        document.getElementById("model-indicator")?.textContent
+      );
+    }, 100);
   }
 
   async initializeUploadView() {
