@@ -99,7 +99,7 @@ export class AnalysisMessage {
     const headerEl = document.createElement("div");
     headerEl.className = "analysis-header";
     headerEl.innerHTML = `
-      <span class="analysis-title">Datenspeicher-Analyse läuft...</span>
+      <span class="analysis-title">Email-Analyse läuft...</span>
       <button class="abort-button" data-action="abort">Abbrechen</button>
     `;
 
