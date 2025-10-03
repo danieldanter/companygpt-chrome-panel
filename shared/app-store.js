@@ -5,6 +5,8 @@
   // Import or use global StateManager
   const StateManager = window.StateManager;
 
+  const debug = window.Debug.create("app");
+
   if (!StateManager) {
     console.error(
       "[AppStore] StateManager not found! Make sure state-manager.js loads first"
@@ -197,7 +199,7 @@
 
     // Track context changes
     if (path.startsWith("context.") && path !== "context.isLoaded") {
-      console.log("[AppStore] Context updated:", path, value);
+      debug.log("[AppStore] Context updated:", path, value);
     }
 
     return value;
@@ -340,9 +342,9 @@
     subscribe: (callback) => store.subscribe("*", callback),
   };
 
-  console.log("[AppStore] Initialized with state management");
-  console.log("[AppStore] Debug mode:", store.debug);
+  debug.log("[AppStore] Initialized with state management");
+  debug.log("[AppStore] Debug mode:", store.debug);
   if (store.debug) {
-    console.log("[AppStore] Use $.state() in console to inspect");
+    debug.log("[AppStore] Use $.state() in console to inspect");
   }
 })();

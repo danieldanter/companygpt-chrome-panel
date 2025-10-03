@@ -2,14 +2,9 @@
 /* eslint-disable no-undef */
 (function () {
   "use strict";
+  const debug = window.Debug.create("auth");
 
-  // Toggle verbose logs for development (true locally; false for store)
-  const DEBUG = false;
-  const debug = (...args) => {
-    if (DEBUG) console.log(...args);
-  };
-
-  debug("[AuthService] Initializing - Background-Driven Auth");
+  debug.log("[AuthService] Initializing - Background-Driven Auth");
 
   // ============================================
   // SINGLETON AUTH STATE
@@ -39,7 +34,7 @@
   };
 
   async function clearAllAuthData() {
-    debug("[AuthService] Clearing all auth data...");
+    debug.log("[AuthService] Clearing all auth data...");
 
     // Clear all stored auth data
     await chrome.storage.local.remove([
@@ -62,7 +57,7 @@
       availableDomains: [],
     };
 
-    debug("[AuthService] All auth data cleared");
+    debug.log("[AuthService] All auth data cleared");
   }
 
   // ============================================
@@ -71,12 +66,12 @@
   async function checkAuth(forceRefresh = false) {
     if (!forceRefresh && isCacheValid()) {
       AuthState.stats.cacheHits++;
-      debug("[AuthService] Cache hit:", AuthState.cache.isAuthenticated);
+      debug.log("[AuthService] Cache hit:", AuthState.cache.isAuthenticated);
       return AuthState.cache.isAuthenticated;
     }
 
     if (AuthState.cache.checkInProgress) {
-      debug("[AuthService] Check in progress, waiting...");
+      debug.log("[AuthService] Check in progress, waiting...");
       return AuthState.cache.checkInProgress;
     }
 
@@ -95,7 +90,7 @@
   // ACTUAL AUTH CHECK (background does domain detection)
   // ============================================
   async function performAuthCheck() {
-    debug("[AuthService] Performing auth check...");
+    debug.log("[AuthService] Performing auth check...");
     AuthState.stats.checksPerformed++;
 
     try {
@@ -105,7 +100,7 @@
         skipCache: false,
       });
 
-      console.log("[AuthService] Background response:", response);
+      debug.log("[AuthService] Background response:", response);
 
       if (response?.success) {
         const domainInfo = {
@@ -114,7 +109,7 @@
           availableDomains: response.availableDomains || [],
         };
 
-        console.log("[AuthService] Domain info before update:", domainInfo);
+        debug.log("[AuthService] Domain info before update:", domainInfo);
 
         updateAuthState(
           response.isAuthenticated,
@@ -123,7 +118,7 @@
           domainInfo
         );
 
-        console.log(
+        debug.log(
           "[AuthService] Domain after updateAuthState:",
           AuthState.cache.activeDomain
         );
@@ -156,8 +151,8 @@
       AuthState.cache.availableDomains = domainInfo.availableDomains;
     }
 
-    // Debug log to verify domain is set
-    console.log(
+    // debug.log log to verify domain is set
+    debug.log(
       "[AuthService] Domain after update:",
       AuthState.cache.activeDomain
     );
@@ -227,7 +222,7 @@
     AuthState.cache.user = null;
     AuthState.cache.lastCheck = 0;
     AuthState.cache.checkInProgress = null;
-    debug("[AuthService] Cache cleared");
+    debug.log("[AuthService] Cache cleared");
   }
 
   function onAuthChange(callback) {
@@ -275,7 +270,7 @@
   // LOGIN / LOGOUT
   // ============================================
   async function login() {
-    debug("[AuthService] Opening CompanyGPT for login...");
+    debug.log("[AuthService] Opening CompanyGPT for login...");
 
     // CLEAR OLD AUTH DATA BEFORE LOGIN
     await clearAllAuthData();
@@ -297,13 +292,13 @@
 
       if (domain) {
         loginUrl = `https://${domain}.506.ai/de/login?callbackUrl=%2F`;
-        debug(
+        debug.log(
           `[AuthService] Login URL (from cached/stored domain): ${loginUrl}`
         );
       } else if (window.CONFIG?.buildLoginUrl && window.CONFIG.isConfigured()) {
         // Fallback to CONFIG builder (may already embed domain)
         loginUrl = window.CONFIG.buildLoginUrl();
-        debug(`[AuthService] Login URL (from CONFIG): ${loginUrl}`);
+        debug.log(`[AuthService] Login URL (from CONFIG): ${loginUrl}`);
       }
 
       if (!loginUrl) {
@@ -335,7 +330,7 @@
   }
 
   function logout() {
-    debug("[AuthService] Logging out...");
+    debug.log("[AuthService] Logging out...");
     clearCache();
     updateAuthState(false, null, "User logged out");
 
@@ -350,7 +345,7 @@
   // INITIALIZATION
   // ============================================
   async function initialize() {
-    debug("[AuthService] Initializing (background-driven)...");
+    debug.log("[AuthService] Initializing (background-driven)...");
 
     try {
       const stored = await chrome.storage.local.get("authState");
@@ -365,8 +360,8 @@
             stored.authState.hasMultipleDomains;
           AuthState.cache.availableDomains =
             stored.authState.availableDomains || [];
-          debug("[AuthService] Restored state from storage");
-          debug(`[AuthService] Domain: ${AuthState.cache.activeDomain}`);
+          debug.log("[AuthService] Restored state from storage");
+          debug.log(`[AuthService] Domain: ${AuthState.cache.activeDomain}`);
         }
       }
     } catch (error) {
@@ -375,15 +370,15 @@
 
     chrome.runtime.onMessage.addListener((request) => {
       if (request.action === "authStateChanged") {
-        debug("[AuthService] Auth state changed from background");
+        debug.log("[AuthService] Auth state changed from background");
         clearCache();
         checkAuth(true);
       }
     });
 
     const isAuthed = await checkAuth();
-    debug("[AuthService] Initial auth check:", isAuthed);
-    debug(`[AuthService] Active domain: ${AuthState.cache.activeDomain}`);
+    debug.log("[AuthService] Initial auth check:", isAuthed);
+    debug.log(`[AuthService] Active domain: ${AuthState.cache.activeDomain}`);
 
     return isAuthed;
   }
@@ -420,5 +415,5 @@
     _state: AuthState,
   };
 
-  debug("[AuthService] Ready - Background-Driven Auth (immutable CONFIG)");
+  debug.log("[AuthService] Ready - Background-Driven Auth (immutable CONFIG)");
 })();

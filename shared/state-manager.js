@@ -153,10 +153,6 @@ class StateManager {
 
   // Notify listeners
   notify(path, value, oldValue) {
-    if (this.debug) {
-      console.log(`[State] ${path}:`, oldValue, "→", value);
-    }
-
     // Notify exact path listeners
     this.listeners.get(path)?.forEach((cb) => cb(value, oldValue, path));
 
@@ -234,10 +230,6 @@ class StateManager {
         const { state, timestamp } = result[this.persistKey];
         // Merge with initial state
         Object.assign(this.state, state);
-
-        if (this.debug) {
-          console.log("[State] Restored from storage:", state);
-        }
       }
     } catch (error) {
       console.error("[State] Load failed:", error);

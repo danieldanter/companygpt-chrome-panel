@@ -2,6 +2,7 @@
 import { debounce } from "./utils.js";
 export class DatenspeicherSelector {
   constructor(store) {
+    this.debug = window.Debug.create("datenspeicher-selector");
     this.store = store;
     this.folders = [];
     this.selectedFolder = null; // Single selection
@@ -18,7 +19,7 @@ export class DatenspeicherSelector {
   }
 
   async init() {
-    console.log("[DatenspeicherSelector] Initializing...");
+    this.debug.log("[DatenspeicherSelector] Initializing...");
 
     this.createDropdownElement();
 
@@ -28,12 +29,15 @@ export class DatenspeicherSelector {
       if (isAuth) {
         await this.loadFolders();
       } else {
-        console.log(
+        this.debug.log(
           "[DatenspeicherSelector] Not authenticated on init, skipping load"
         );
       }
     } catch (error) {
-      console.log("[DatenspeicherSelector] Init load skipped:", error.message);
+      this.debug.log(
+        "[DatenspeicherSelector] Init load skipped:",
+        error.message
+      );
     }
 
     this.restoreLastSelection();
@@ -49,7 +53,7 @@ export class DatenspeicherSelector {
     if (lastSelectedId && lastSelectedName) {
       this.selectedFolder = { id: lastSelectedId, name: lastSelectedName };
       this.updateButtonText(lastSelectedName);
-      console.log(
+      this.debug.log(
         "[DatenspeicherSelector] Restored last selection:",
         lastSelectedName
       );
@@ -121,7 +125,7 @@ export class DatenspeicherSelector {
     document
       .getElementById("dropdown-refresh")
       ?.addEventListener("click", async () => {
-        console.log("[DatenspeicherSelector] Manual refresh triggered");
+        this.debug.log("[DatenspeicherSelector] Manual refresh triggered");
 
         // Show loading state
         const listElement = document.getElementById("datenspeicher-list");
@@ -199,7 +203,7 @@ export class DatenspeicherSelector {
           const tenMinutes = 10 * 60 * 1000;
 
           if (cacheAge < tenMinutes) {
-            console.log(`[DatenspeicherSelector] Using cached folders`);
+            this.debug.log(`[DatenspeicherSelector] Using cached folders`);
             this.folders = cachedFolders;
             if (this.isOpen) this.renderFolders();
             return;
@@ -210,7 +214,9 @@ export class DatenspeicherSelector {
       // Check if authenticated first
       const isAuth = await window.APIService.checkAuth();
       if (!isAuth) {
-        console.log("[DatenspeicherSelector] Not authenticated, using cache");
+        this.debug.log(
+          "[DatenspeicherSelector] Not authenticated, using cache"
+        );
         const cachedFolders = this.store.get("datenspeicher.available");
         if (cachedFolders) {
           this.folders = cachedFolders;
@@ -219,7 +225,7 @@ export class DatenspeicherSelector {
         return;
       }
 
-      console.log("[DatenspeicherSelector] Loading folders via APIService");
+      this.debug.log("[DatenspeicherSelector] Loading folders via APIService");
 
       // USE THE APISERVICE!
       const response = await window.APIService.fetchFolders();
@@ -238,7 +244,7 @@ export class DatenspeicherSelector {
         this.folders = [];
       }
 
-      console.log(
+      this.debug.log(
         `[DatenspeicherSelector] Loaded ${this.folders.length} MEDIA folders`
       );
 
@@ -253,11 +259,13 @@ export class DatenspeicherSelector {
       // Use cache as fallback
       const cachedFolders = this.store.get("datenspeicher.available");
       if (cachedFolders && cachedFolders.length > 0) {
-        console.log("[DatenspeicherSelector] Using cached folders as fallback");
+        this.debug.log(
+          "[DatenspeicherSelector] Using cached folders as fallback"
+        );
         this.folders = cachedFolders;
         if (this.isOpen) this.renderFolders();
       } else {
-        console.log("[DatenspeicherSelector] No folders available");
+        this.debug.log("[DatenspeicherSelector] No folders available");
         this.folders = [];
       }
     }
@@ -322,7 +330,7 @@ export class DatenspeicherSelector {
    */
   // Update the selectFolder method
   selectFolder(folderId, folderName) {
-    console.log("[DatenspeicherSelector] Selected folder:", folderName);
+    this.debug.log("[DatenspeicherSelector] Selected folder:", folderName);
 
     // Update selection
     this.selectedFolder = { id: folderId, name: folderName };
@@ -451,7 +459,7 @@ export class DatenspeicherSelector {
     if (lastSelectedId && lastSelectedName) {
       this.selectedFolder = { id: lastSelectedId, name: lastSelectedName };
       this.updateButtonWithSelection(lastSelectedName);
-      console.log(
+      this.debug.log(
         "[DatenspeicherSelector] Restored last selection:",
         lastSelectedName
       );
@@ -501,7 +509,7 @@ export class DatenspeicherSelector {
   async open() {
     if (this.isOpen) return;
 
-    console.log("[DatenspeicherSelector] Opening dropdown");
+    this.debug.log("[DatenspeicherSelector] Opening dropdown");
 
     // Load folders (will use cache if available and fresh)
     await this.loadFolders();
@@ -512,7 +520,7 @@ export class DatenspeicherSelector {
 
     if (lastSelectedId && lastSelectedName) {
       this.selectedFolder = { id: lastSelectedId, name: lastSelectedName };
-      console.log(
+      this.debug.log(
         "[DatenspeicherSelector] Restored selection in dropdown:",
         lastSelectedName
       );
@@ -572,7 +580,7 @@ export class DatenspeicherSelector {
   close() {
     if (!this.isOpen) return;
 
-    console.log("[DatenspeicherSelector] Closing dropdown");
+    this.debug.log("[DatenspeicherSelector] Closing dropdown");
 
     if (this.dropdownElement) {
       this.dropdownElement.style.display = "none";

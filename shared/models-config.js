@@ -1,10 +1,10 @@
 // shared/models-config.js
-console.log("[ModelsConfig] Loading models-config.js file..."); // ADD THIS LINE
 
 (function () {
   "use strict";
 
-  console.log("[ModelsConfig] Inside IIFE, defining models..."); // ADD THIS LINE
+  const debug = window.Debug.create("models");
+  debug.log("[ModelsConfig] Inside IIFE, defining models...");
   // Model definitions matching 506.ai backend exactly
   const AVAILABLE_MODELS = Object.freeze([
     {

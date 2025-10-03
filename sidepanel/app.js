@@ -10,6 +10,8 @@ import { AudioRecorder } from "./modules/audio-recorder.js";
 class CompanyGPTChat {
   constructor() {
     // Use AppStore as single source of truth
+    this.debug = window.Debug.create("app");
+
     this.store = window.AppStore;
 
     // Core modules
@@ -28,15 +30,15 @@ class CompanyGPTChat {
   }
 
   setupStateSubscriptions() {
-    console.log("[App] Setting up state subscriptions...");
+    this.debug.log("[App] Setting up state subscriptions...");
 
     this.store.subscribe("chat.selectedModel", (model) => {
-      console.log("[App] Model state changed:", model);
+      this.debug.log("[App] Model state changed:", model);
       this.updateModelIndicator();
     });
     // Auth state changes
     this.store.subscribe("auth.isAuthenticated", (isAuth) => {
-      console.log("[App] Auth state changed:", isAuth);
+      this.debug.log("[App] Auth state changed:", isAuth);
 
       // Update UI
       this.updateAuthStatus(isAuth, this.store.get("auth.domain"));
@@ -59,19 +61,19 @@ class CompanyGPTChat {
 
     // Context changes
     this.store.subscribe("context.isLoaded", (isLoaded) => {
-      console.log("[App] Context loaded state:", isLoaded);
+      this.debug.log("[App] Context loaded state:", isLoaded);
     });
 
     // Active view changes
     this.store.subscribe("ui.activeView", (view) => {
-      console.log("[App] View changed to:", view);
+      this.debug.log("[App] View changed to:", view);
       this.showView(view);
       this.setActiveButton(view === "chat" ? "btnChat" : "btnSettings");
     });
   }
 
   async initialize() {
-    console.log("[App] Initializing CompanyGPT Chat...");
+    this.debug.log("[App] Initializing CompanyGPT Chat...");
 
     try {
       // Initialize modules (but not chat controller yet)
@@ -100,7 +102,7 @@ class CompanyGPTChat {
       // Initialize DatenspeicherSelector after ContextManager
       try {
         this.datenspeicherSelector = new DatenspeicherSelector(this.store);
-        console.log("[App] DatenspeicherSelector initialized");
+        this.debug.log("[App] DatenspeicherSelector initialized");
       } catch (dsErr) {
         console.warn(
           "[App] DatenspeicherSelector could not be initialized:",
@@ -111,7 +113,7 @@ class CompanyGPTChat {
       // 🔹 Initialize Upload View
       if (typeof this.initializeUploadView === "function") {
         await this.initializeUploadView();
-        console.log("[App] Upload View initialized");
+        this.debug.log("[App] Upload View initialized");
       } else {
         console.warn(
           "[App] initializeUploadView() not found — skipping Upload init"
@@ -127,7 +129,7 @@ class CompanyGPTChat {
       }
 
       this.isInitialized = true;
-      console.log("[App] Initialization complete");
+      this.debug.log("[App] Initialization complete");
     } catch (error) {
       console.error("[App] Initialization failed:", error);
       this.showError("Initialisierung fehlgeschlagen: " + error.message);
@@ -177,7 +179,7 @@ class CompanyGPTChat {
 
   // Initialize model selection UI
   async initializeModelSelection() {
-    console.log("[App] Initializing model selection...");
+    this.debug.log("[App] Initializing model selection...");
 
     const models = window.ModelsConfig.getAll();
     const currentModelId =
@@ -236,7 +238,7 @@ class CompanyGPTChat {
       const isOpen = dropdownMenu.style.display !== "none";
       dropdownMenu.style.display = isOpen ? "none" : "block";
       newDropdownButton.classList.toggle("open", !isOpen);
-      console.log("[App] Dropdown toggled:", !isOpen ? "open" : "closed");
+      this.debug.log("[App] Dropdown toggled:", !isOpen ? "open" : "closed");
     });
 
     // Handle selection - use event delegation
@@ -245,7 +247,7 @@ class CompanyGPTChat {
       if (!option) return;
 
       const modelId = option.dataset.modelId;
-      console.log("[App] Model option clicked:", modelId);
+      this.debug.log("[App] Model option clicked:", modelId);
 
       this.handleModelChange(modelId);
       dropdownMenu.style.display = "none";
@@ -305,11 +307,11 @@ class CompanyGPTChat {
       true
     ); // Use capture phase
 
-    console.log("[App] Model selection dropdown initialized");
+    this.debug.log("[App] Model selection dropdown initialized");
   }
 
   showNotification(message, type = "info") {
-    console.log(`[App] ${type.toUpperCase()}: ${message}`);
+    this.debug.log(`[App] ${type.toUpperCase()}: ${message}`);
 
     // Create a temporary notification element
     const notification = document.createElement("div");
@@ -338,7 +340,7 @@ class CompanyGPTChat {
   }
   // Handle model selection change
   handleModelChange(modelId) {
-    console.log("[App] Model changed to:", modelId);
+    this.debug.log("[App] Model changed to:", modelId);
 
     const model = window.ModelsConfig.getById(modelId);
     if (!model) {
@@ -367,7 +369,7 @@ class CompanyGPTChat {
     // Update indicator immediately
     this.updateModelIndicator();
 
-    console.log("[App] Model change complete");
+    this.debug.log("[App] Model change complete");
   }
 
   // Update model indicator in chat header
@@ -375,15 +377,15 @@ class CompanyGPTChat {
   updateModelIndicator() {
     // Get the model from the store (single source of truth)
     const model = this.store.get("chat.selectedModel");
-    console.log("[App] Updating model indicator with model:", model?.name);
+    this.debug.log("[App] Updating model indicator with model:", model?.name);
 
     const indicatorById = document.getElementById("model-indicator");
     const indicatorByClass = document.querySelector(
       ".header-left .model-indicator"
     );
 
-    console.log("[App] Found by ID:", indicatorById);
-    console.log("[App] Found by class:", indicatorByClass);
+    this.debug.log("[App] Found by ID:", indicatorById);
+    this.debug.log("[App] Found by class:", indicatorByClass);
 
     if (indicatorById && model) {
       indicatorById.textContent = model.name;
@@ -399,7 +401,7 @@ class CompanyGPTChat {
   }
 
   async initializeUploadView() {
-    console.log("[App] Initializing upload view...");
+    this.debug.log("[App] Initializing upload view...");
 
     // Initialize AudioRecorder
     this.audioRecorder = new AudioRecorder(this.store);
@@ -420,13 +422,13 @@ class CompanyGPTChat {
     // Generate default filename
     this.updateDefaultFilename();
 
-    console.log("[App] Upload view initialized");
+    this.debug.log("[App] Upload view initialized");
   }
 
   // In app.js, add these methods to your CompanyGPTChat class:
 
   async initializeUploadView() {
-    console.log("[App] Initializing upload view...");
+    this.debug.log("[App] Initializing upload view...");
 
     // Initialize AudioRecorder
     this.audioRecorder = new AudioRecorder(this.store);
@@ -447,7 +449,7 @@ class CompanyGPTChat {
     // Generate default filename
     this.updateDefaultFilename();
 
-    console.log("[App] Upload view initialized");
+    this.debug.log("[App] Upload view initialized");
   }
 
   setupUploadListeners() {
@@ -560,7 +562,7 @@ class CompanyGPTChat {
   }
 
   async openFolderSelector() {
-    console.log("[App] Opening upload folder selector");
+    this.debug.log("[App] Opening upload folder selector");
     const button = document.getElementById("upload-folder-select");
     if (!button) return;
 
@@ -591,7 +593,7 @@ class CompanyGPTChat {
         // FIX: Extract folders from the data object
         const folders = data?.folders || [];
 
-        console.log("[App] Folders loaded:", folders.length);
+        this.debug.log("[App] Folders loaded:", folders.length);
 
         if (folders.length > 0) {
           const mediaFolders = folders.filter((f) => f.type === "MEDIA");
@@ -636,7 +638,7 @@ class CompanyGPTChat {
 
         // Close dropdown
         dropdown.classList.remove("show");
-        console.log("[App] Selected:", folderName, folderId);
+        this.debug.log("[App] Selected:", folderName, folderId);
       };
     }
 
@@ -691,12 +693,12 @@ class CompanyGPTChat {
     // --- Typing indicators (debounced) ---
     this.showUserTyping = debounce(() => {
       // Could send typing status to backend
-      console.log("[App] User is typing...");
+      this.debug.log("[App] User is typing...");
       this.store.set("chat.userTyping", true);
     }, 300);
 
     this.hideUserTyping = debounce(() => {
-      console.log("[App] User stopped typing");
+      this.debug.log("[App] User stopped typing");
       this.store.set("chat.userTyping", false);
     }, 1000);
 
@@ -738,18 +740,18 @@ class CompanyGPTChat {
 
       // Ignore OAuth redirects
       if (url && (url.includes("/login/") || url.includes("?code="))) {
-        console.log("[App] Ignoring OAuth redirect URL:", url);
+        this.debug.log("[App] Ignoring OAuth redirect URL:", url);
         return;
       }
 
       tabChangeTimeout = setTimeout(async () => {
         if (url === lastProcessedUrl) {
-          console.log("[App] Skipping duplicate tab change for:", url);
+          this.debug.log("[App] Skipping duplicate tab change for:", url);
           return;
         }
 
         lastProcessedUrl = url;
-        console.log("[App] Processing tab change:", url);
+        this.debug.log("[App] Processing tab change:", url);
 
         if (this.contextManager) {
           if (!url?.startsWith("chrome://") && !url?.startsWith("about:")) {
@@ -891,7 +893,7 @@ class CompanyGPTChat {
         "settings.emailConfig.signature",
         emailSignatureInput.value
       );
-      console.log("[App] Email config saved:", {
+      this.debug.log("[App] Email config saved:", {
         senderName: emailSenderInput.value,
         signature: emailSignatureInput.value,
       });
@@ -917,7 +919,7 @@ class CompanyGPTChat {
   }
 
   async clearChatHistory() {
-    console.log("[App] Clearing all chat data");
+    this.debug.log("[App] Clearing all chat data");
 
     // Use store action
     this.store.actions.clearChat();
@@ -936,7 +938,7 @@ class CompanyGPTChat {
   }
 
   activateReplyMode() {
-    console.log("[App] Activating reply mode");
+    this.debug.log("[App] Activating reply mode");
 
     // Mark that we're in reply mode
     this.store.set("ui.replyMode", true);
@@ -973,7 +975,7 @@ class CompanyGPTChat {
   }
 
   deactivateReplyMode() {
-    console.log("[App] Deactivating reply mode");
+    this.debug.log("[App] Deactivating reply mode");
 
     this.store.set("ui.replyMode", false);
 
@@ -1034,7 +1036,7 @@ class CompanyGPTChat {
   }
 
   showLoginOverlay(detectedDomain = null) {
-    console.log("[App] Showing login overlay, domain:", detectedDomain);
+    this.debug.log("[App] Showing login overlay, domain:", detectedDomain);
 
     // Show overlay
     if (this.elements.loginOverlay) {
@@ -1071,7 +1073,7 @@ class CompanyGPTChat {
   }
 
   hideLoginOverlay() {
-    console.log("[App] Hiding login overlay");
+    this.debug.log("[App] Hiding login overlay");
 
     if (this.elements.loginOverlay) {
       this.elements.loginOverlay.style.display = "none";
@@ -1083,7 +1085,7 @@ class CompanyGPTChat {
   }
 
   async handleLogin() {
-    console.log("[App] Opening login page");
+    this.debug.log("[App] Opening login page");
 
     this.store.set("ui.isLoading", true);
 
@@ -1125,7 +1127,7 @@ class CompanyGPTChat {
       }
 
       const loginUrl = `https://${domain}.506.ai/de/login?callbackUrl=%2F`;
-      console.log("[App] Opening login URL:", loginUrl);
+      this.debug.log("[App] Opening login URL:", loginUrl);
 
       await chrome.tabs.create({ url: loginUrl });
 
@@ -1144,11 +1146,11 @@ class CompanyGPTChat {
   }
 
   async recheckAuth() {
-    console.log("[App] Rechecking authentication...");
+    this.debug.log("[App] Rechecking authentication...");
 
     const isCheckInProgress = this.store.get("auth.checkInProgress");
     if (isCheckInProgress) {
-      console.log("[App] Auth check already in progress, skipping");
+      this.debug.log("[App] Auth check already in progress, skipping");
       return;
     }
 
@@ -1167,19 +1169,19 @@ class CompanyGPTChat {
       }
 
       // Wait for cookies to be properly set
-      console.log("[App] Waiting for cookies to be set...");
+      this.debug.log("[App] Waiting for cookies to be set...");
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Try to directly check for the cookie
       const cookieCheck = await this.checkCookieDirectly();
-      console.log("[App] Direct cookie check result:", cookieCheck);
+      this.debug.log("[App] Direct cookie check result:", cookieCheck);
 
       // Force refresh auth check
       const isAuthenticated = await this.checkAuth();
-      console.log("[App] Auth check result:", isAuthenticated);
+      this.debug.log("[App] Auth check result:", isAuthenticated);
 
       if (isAuthenticated || cookieCheck) {
-        console.log("[App] Authentication successful!");
+        this.debug.log("[App] Authentication successful!");
         this.hideLoginOverlay();
         this.store.set("auth.isAuthenticated", true);
 
@@ -1226,7 +1228,7 @@ class CompanyGPTChat {
         name: "__Secure-next-auth.session-token",
       });
 
-      console.log("[App] Found cookies:", cookies.length);
+      this.debug.log("[App] Found cookies:", cookies.length);
 
       if (cookies && cookies.length > 0) {
         const now = Date.now() / 1000;
@@ -1235,7 +1237,7 @@ class CompanyGPTChat {
         });
 
         if (validCookie) {
-          console.log("[App] Valid session cookie found!");
+          this.debug.log("[App] Valid session cookie found!");
 
           const domain = validCookie.domain
             .replace(/^\./, "")
@@ -1246,7 +1248,7 @@ class CompanyGPTChat {
             window.AuthService._state.cache.activeDomain = domain;
             window.AuthService._state.cache.isAuthenticated = true;
             window.AuthService._state.cache.lastCheck = Date.now();
-            console.log("[App] Updated AuthService with domain:", domain);
+            this.debug.log("[App] Updated AuthService with domain:", domain);
           }
 
           this.updateAuthStatus(true, domain);
@@ -1263,7 +1265,7 @@ class CompanyGPTChat {
   }
 
   async checkAuth() {
-    console.log("[App] Checking authentication...");
+    this.debug.log("[App] Checking authentication...");
 
     try {
       this.store.set("ui.isLoading", true);
@@ -1271,7 +1273,7 @@ class CompanyGPTChat {
       const isAuth = await window.AuthService.checkAuth(true);
       const domain = window.AuthService.getActiveDomain();
 
-      console.log("[App] Auth check result:", isAuth, "Domain:", domain);
+      this.debug.log("[App] Auth check result:", isAuth, "Domain:", domain);
 
       // Update store with auth info
       this.store.batch({
@@ -1327,7 +1329,7 @@ class CompanyGPTChat {
     this.elements.messageInput.value = "";
     this.elements.messageInput.style.height = "auto";
 
-    console.log("[App] User sending message:", message);
+    this.debug.log("[App] User sending message:", message);
 
     await this.processSendMessage(message);
   }
@@ -1336,22 +1338,22 @@ class CompanyGPTChat {
     const text = inputText || this.elements?.messageInput?.value?.trim();
     if (!text) return;
 
-    console.log("[App] User sending message:", text);
+    this.debug.log("[App] User sending message:", text);
 
     // Check Reply Mode (set elsewhere in the UI/store)
     const isReplyMode = this.store.get("ui.replyMode") === true;
-    console.log("[App] Reply mode active?", isReplyMode);
+    this.debug.log("[App] Reply mode active?", isReplyMode);
 
     // Clear any preserved intent from previous operations
     // UNLESS this is a reply mode activation / flow
     if (!isReplyMode) {
       this.store.set("chat.currentIntent", null);
-      console.log("[App] Cleared preserved intent for new user message");
+      this.debug.log("[App] Cleared preserved intent for new user message");
     }
 
     // ===== Reply Mode: Turn user's keywords into an email reply =====
     if (isReplyMode) {
-      console.log("[App] Processing as email reply with keywords");
+      this.debug.log("[App] Processing as email reply with keywords");
 
       // Deactivate reply mode first
       if (typeof this.deactivateReplyMode === "function") {
@@ -1403,7 +1405,7 @@ class CompanyGPTChat {
 
       // Ensure chat is ready
       if (!this.chatController || !this.chatController.isInitialized) {
-        console.log("[App] Initializing chat for reply");
+        this.debug.log("[App] Initializing chat for reply");
         try {
           await this.initializeChat();
         } catch (error) {
@@ -1454,7 +1456,7 @@ class CompanyGPTChat {
     }
 
     // ===== Normal message flow =====
-    console.log("[App] Processing message:", text);
+    this.debug.log("[App] Processing message:", text);
 
     // Add user message to UI
     this.addMessage(text, "user");
@@ -1467,7 +1469,7 @@ class CompanyGPTChat {
       let context = null;
       if (this.contextManager && this.contextManager.hasContext()) {
         context = this.contextManager.getContextForMessage();
-        console.log("[App] Including context with message");
+        this.debug.log("[App] Including context with message");
       }
 
       // Detect intent only for email contexts
@@ -1491,7 +1493,7 @@ class CompanyGPTChat {
         }
       }
 
-      console.log("[App] Sending to chat controller with intent:", intent);
+      this.debug.log("[App] Sending to chat controller with intent:", intent);
       const response = await this.chatController.sendMessage(
         text,
         context,
@@ -1526,7 +1528,7 @@ class CompanyGPTChat {
 
   async initializeChat() {
     try {
-      console.log("[App] Initializing chat controller...");
+      this.debug.log("[App] Initializing chat controller...");
 
       if (!this.chatController) {
         this.chatController = new ChatController();
@@ -1539,7 +1541,7 @@ class CompanyGPTChat {
         }
       }
 
-      console.log("[App] Chat controller ready");
+      this.debug.log("[App] Chat controller ready");
 
       if (
         this.elements.messagesContainer &&
@@ -1577,10 +1579,10 @@ class CompanyGPTChat {
         ? this.chatController.getLastUserIntent()
         : null;
 
-      console.log("[App] Last user intent:", lastUserIntent);
+      this.debug.log("[App] Last user intent:", lastUserIntent);
 
       if (lastUserIntent && lastUserIntent !== "general") {
-        console.log("[App] Should show buttons for intent:", lastUserIntent);
+        this.debug.log("[App] Should show buttons for intent:", lastUserIntent);
 
         const processedContent = this.messageRenderer.renderMarkdown(content);
 
@@ -1649,15 +1651,15 @@ class CompanyGPTChat {
   // Change this method from handleGmailReply to handleEmailReply
   // Change this method from handleGmailReply to handleEmailReply
   async handleEmailReply(content) {
-    console.log("[App] Handling email reply");
+    this.debug.log("[App] Handling email reply");
 
     const context = this.store.get("context");
     const emailProvider = context?.emailProvider || "unknown";
 
-    console.log(`[App] Email provider: ${emailProvider}`);
+    this.debug.log(`[App] Email provider: ${emailProvider}`);
 
     const emailData = this.parseEmailContent(content);
-    console.log("[App] Parsed email data:", emailData);
+    this.debug.log("[App] Parsed email data:", emailData);
 
     try {
       // Get the CURRENTLY ACTIVE tab
@@ -1667,7 +1669,7 @@ class CompanyGPTChat {
       });
 
       if (activeTab) {
-        console.log(`[App] Current active tab:`, activeTab.url);
+        this.debug.log(`[App] Current active tab:`, activeTab.url);
 
         // Check if it's an email tab
         const isEmailTab =
@@ -1676,7 +1678,7 @@ class CompanyGPTChat {
           activeTab.url?.includes("outlook.live.com");
 
         if (isEmailTab) {
-          console.log(`[App] Inserting into current tab (${emailProvider})`);
+          this.debug.log(`[App] Inserting into current tab (${emailProvider})`);
 
           // Send message to the CURRENT tab's content script
           try {
@@ -1686,7 +1688,7 @@ class CompanyGPTChat {
               provider: emailProvider,
             });
 
-            console.log("[App] Insert response:", response);
+            this.debug.log("[App] Insert response:", response);
 
             if (response?.success) {
               if (
@@ -1708,7 +1710,7 @@ class CompanyGPTChat {
               );
             }
           } catch (err) {
-            console.log("[App] Content script not ready, injecting...");
+            this.debug.log("[App] Content script not ready, injecting...");
 
             // Try to inject content script if it's not there
             await chrome.scripting.executeScript({
@@ -1725,7 +1727,7 @@ class CompanyGPTChat {
               provider: emailProvider,
             });
 
-            console.log("[App] Insert response (retry):", response);
+            this.debug.log("[App] Insert response (retry):", response);
           }
         } else {
           // Current tab is not an email tab
@@ -1752,7 +1754,7 @@ class CompanyGPTChat {
   }
 
   async handleGmailCompose(content) {
-    console.log("[App] Handling Gmail compose");
+    this.debug.log("[App] Handling Gmail compose");
 
     const emailData = this.parseEmailContent(content);
     const composeUrl = `https://mail.google.com/mail/?view=cm&su=${encodeURIComponent(
@@ -1867,7 +1869,7 @@ class CompanyGPTChat {
       this.store.get("chat.lastUserIntent") ||
       this.store.get("chat.currentIntent");
 
-    console.log("[App] Stream complete, checking intent:", intent);
+    this.debug.log("[App] Stream complete, checking intent:", intent);
 
     // Also check if the last user message was a Datenspeicher request for email
     const messages = this.store.get("chat.messages") || [];
@@ -1879,7 +1881,7 @@ class CompanyGPTChat {
 
     // ... add buttons logic ...
     if (intent === "email-reply" || wasEmailDatanspeicher) {
-      console.log(
+      this.debug.log(
         "[App] Adding email action buttons (intent or Datenspeicher email detected)"
       );
       this.addEmailActionButtons(messageEl, content);
@@ -1888,7 +1890,7 @@ class CompanyGPTChat {
     // IMPORTANT: Clear the intent after use!
     // Only preserve it during the operation, not forever
     this.store.set("chat.currentIntent", null);
-    console.log("[App] Cleared current intent after streaming");
+    this.debug.log("[App] Cleared current intent after streaming");
 
     // Final scroll after streaming complete
     requestAnimationFrame(() => {
@@ -2056,7 +2058,7 @@ class CompanyGPTChat {
 
   // Handle variation requests
   async handleVariation(originalContent, variation) {
-    console.log(`[App] Requesting ${variation} variation`);
+    this.debug.log(`[App] Requesting ${variation} variation`);
 
     // Create the appropriate user message
     let userMessage = "";
@@ -2168,7 +2170,7 @@ class CompanyGPTChat {
   }
 
   async handleTabChange(tabId) {
-    console.log("[App] Tab changed:", tabId);
+    this.debug.log("[App] Tab changed:", tabId);
     this.contextManager?.loadPageContext();
   }
 
@@ -2188,7 +2190,7 @@ class CompanyGPTChat {
         // Just acknowledge it's a known message type
         break;
       default:
-        console.log("[App] Unknown message type:", message.type);
+        this.debug.log("[App] Unknown message type:", message.type);
     }
   }
 
@@ -2208,11 +2210,11 @@ class CompanyGPTChat {
   }
 
   async handleContextAction(action) {
-    console.log("[App] Context action:", action);
+    this.debug.log("[App] Context action:", action);
 
     // Get context
     const context = this.contextManager?.getContextForMessage();
-    console.log("[App] Context retrieved:", context);
+    this.debug.log("[App] Context retrieved:", context);
 
     // --- Existing validation ---
     if (!this.contextManager || !this.contextManager.hasContext()) {
@@ -2226,7 +2228,7 @@ class CompanyGPTChat {
     }
 
     if (!this.chatController || !this.chatController.isInitialized) {
-      console.log("[App] Chat controller not ready, initializing...");
+      this.debug.log("[App] Chat controller not ready, initializing...");
       try {
         await this.initializeChat();
       } catch (error) {
@@ -2272,7 +2274,7 @@ class CompanyGPTChat {
       this.manageIntentLifecycle("start", intent);
     }
 
-    console.log("[App] Setting intent for action:", action, "->", intent);
+    this.debug.log("[App] Setting intent for action:", action, "->", intent);
 
     // --- Build query text ---
     let query = "";
@@ -2361,10 +2363,10 @@ class CompanyGPTChat {
 
       const thinkingId = this.showTypingIndicator();
 
-      console.log("[App] Sending to chat controller:");
-      console.log("  Query:", query);
-      console.log("  Context:", context);
-      console.log("  Intent:", intent);
+      this.debug.log("[App] Sending to chat controller:");
+      this.debug.log("  Query:", query);
+      this.debug.log("  Context:", context);
+      this.debug.log("  Intent:", intent);
 
       // Pass the intent to the chat controller
       const response = await this.chatController.sendMessage(
@@ -2395,14 +2397,14 @@ class CompanyGPTChat {
         // Starting an action (email reply, summarize, etc.)
         this.store.set("chat.currentIntent", intent);
         this.store.set("chat.intentPhase", "active");
-        console.log(`[App] Intent lifecycle: Started ${intent}`);
+        this.debug.log(`[App] Intent lifecycle: Started ${intent}`);
         break;
 
       case "complete":
         // Action completed, clear intent
         this.store.set("chat.currentIntent", null);
         this.store.set("chat.intentPhase", "idle");
-        console.log("[App] Intent lifecycle: Completed, intent cleared");
+        this.debug.log("[App] Intent lifecycle: Completed, intent cleared");
         break;
 
       case "check":
@@ -2415,7 +2417,7 @@ class CompanyGPTChat {
   // Place it after the handleContextAction method
   async handleDatenspeicherReply(selection) {
     this.manageIntentLifecycle("start", "email-reply");
-    console.log(
+    this.debug.log(
       "[App] Datenspeicher selected for multi-step reply:",
       selection
     );
@@ -2445,7 +2447,7 @@ class CompanyGPTChat {
     }
 
     if (!this.chatController || !this.chatController.isInitialized) {
-      console.log("[App] Chat controller not ready, initializing...");
+      this.debug.log("[App] Chat controller not ready, initializing...");
       try {
         await this.initializeChat();
       } catch (error) {
@@ -2484,7 +2486,7 @@ class CompanyGPTChat {
       this.store.set("chat.lastUserIntent", "email-reply");
       this.store.set("chat.currentIntent", "email-reply");
 
-      console.log(
+      this.debug.log(
         "[App] Starting multi-step Datenspeicher process with email-reply intent"
       );
 
@@ -2525,7 +2527,7 @@ class CompanyGPTChat {
       // Ensure intent remains correctly set after response
       this.store.set("chat.lastUserIntent", "email-reply");
 
-      console.log("[App] Multi-step Datenspeicher reply completed");
+      this.debug.log("[App] Multi-step Datenspeicher reply completed");
     } catch (error) {
       console.error("[App] Failed to process Datenspeicher reply:", error);
       this.showError(`Fehler: ${error.message}`);

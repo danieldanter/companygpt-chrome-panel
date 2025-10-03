@@ -3,15 +3,13 @@ import { AnalysisMessage } from "./analysis-message.js";
 
 export class ChatController {
   constructor() {
+    this.debug = window.Debug.create("chat");
     // Use AppStore as single source of truth
     this.store = window.AppStore;
 
     // Controller state
     this.isInitialized = false;
     this.abortController = null;
-
-    // Debug flag
-    this.debug = true;
 
     // Setup state sync
     this.setupStateSync();
@@ -21,17 +19,8 @@ export class ChatController {
     this.multiStepAbortController = null;
   }
 
-  /**
-   * Debug logger
-   */
-  log(...args) {
-    if (this.debug) {
-      console.log("[ChatController]", ...args);
-    }
-  }
-
   setupStateSync() {
-    console.log("[ChatController] Setting up state sync...");
+    this.debug.log("[ChatController] Setting up state sync...");
 
     // We don't need to manually sync anymore - just read from store when needed
     // The store is our single source of truth
@@ -52,7 +41,7 @@ export class ChatController {
    * Initialize the chat controller
    */
   async initialize() {
-    this.log("Initializing with state management...");
+    this.debug.log("Initializing with state management...");
 
     try {
       // Load folders and roles from CompanyGPT
@@ -63,7 +52,7 @@ export class ChatController {
       const storedSessionId = this.store.get("chat.sessionId");
 
       if (storedSessionId) {
-        this.log("Restored session from store:", storedSessionId);
+        this.debug.log("Restored session from store:", storedSessionId);
       }
 
       if (storedMessages.length > 0) {
@@ -76,7 +65,7 @@ export class ChatController {
 
         // Update store with filtered messages
         this.store.set("chat.messages", todaysMessages);
-        this.log(`Loaded ${todaysMessages.length} messages from store`);
+        this.debug.log(`Loaded ${todaysMessages.length} messages from store`);
       }
 
       // Set up message handlers
@@ -85,7 +74,7 @@ export class ChatController {
       this.isInitialized = true;
       this.store.set("chat.initialized", true);
 
-      this.log("Initialized successfully", {
+      this.debug.log("Initialized successfully", {
         folderId: this.store.get("chat.folderId"),
         roleId: this.store.get("chat.roleId"),
         messagesLoaded: this.store.get("chat.messages").length,
@@ -107,12 +96,12 @@ export class ChatController {
    * Load folders and roles
    */
   async loadFoldersAndRoles() {
-    this.log("Loading folders and roles...");
+    this.debug.log("Loading folders and roles...");
 
     try {
       // Use APIService for folders
       const foldersData = await window.APIService.fetchFolders();
-      this.log("Folders response:", foldersData);
+      this.debug.log("Folders response:", foldersData);
 
       const rootChatFolder = foldersData?.folders?.find(
         (f) => f?.type === "ROOT_CHAT"
@@ -120,12 +109,12 @@ export class ChatController {
 
       if (rootChatFolder) {
         this.store.set("chat.folderId", rootChatFolder.id);
-        this.log("Found ROOT_CHAT folder:", rootChatFolder);
+        this.debug.log("Found ROOT_CHAT folder:", rootChatFolder);
       }
 
       // Use APIService for roles
       const rolesData = await window.APIService.fetchRoles();
-      this.log("Roles response:", rolesData);
+      this.debug.log("Roles response:", rolesData);
 
       const roles = rolesData?.roles || [];
       const chosenRole = roles.find((r) => r?.defaultRole === true) || roles[0];
@@ -133,7 +122,7 @@ export class ChatController {
       if (chosenRole) {
         const roleId = chosenRole.roleId ?? chosenRole.id;
         this.store.set("chat.roleId", roleId);
-        this.log("Set role:", chosenRole);
+        this.debug.log("Set role:", chosenRole);
       }
     } catch (error) {
       console.warn(
@@ -148,17 +137,17 @@ export class ChatController {
    * Make authenticated request with cookies
    */
   async makeAuthenticatedRequest(url, options = {}) {
-    this.log("Making authenticated request:", url, options);
+    this.debug.log("Making authenticated request:", url, options);
 
     try {
       // Debug what we're receiving
-      console.log("[ChatController] Options body:", options.body);
+      this.debug.log("[ChatController] Options body:", options.body);
 
       // Extract the payload from options
       const payload = options.body ? JSON.parse(options.body) : {};
 
-      console.log("[ChatController] Parsed payload:", payload);
-      console.log("[ChatController] Payload keys:", Object.keys(payload));
+      this.debug.log("[ChatController] Parsed payload:", payload);
+      this.debug.log("[ChatController] Payload keys:", Object.keys(payload));
 
       const response = await window.APIService.sendChatMessage(payload);
 
@@ -168,7 +157,7 @@ export class ChatController {
         text: async () => JSON.stringify(response),
       };
     } catch (error) {
-      this.log("Request failed:", error);
+      this.debug.log("Request failed:", error);
 
       // Keep the same error handling
       const errorMessage = error.message || error.toString();
@@ -206,7 +195,7 @@ export class ChatController {
         context?.emailProvider;
 
       if (isEmailContext) {
-        console.log(
+        this.debug.log(
           "[ChatController] Preserving email-reply intent for email context"
         );
         return "email-reply";
@@ -260,8 +249,8 @@ export class ChatController {
     folderName,
     explicitIntent = null
   ) {
-    console.log("[ChatController] Starting multi-step Datenspeicher reply");
-    console.log("[ChatController] Explicit intent:", explicitIntent);
+    this.debug.log("[ChatController] Starting multi-step Datenspeicher reply");
+    this.debug.log("[ChatController] Explicit intent:", explicitIntent);
 
     // Preserve the intent throughout the process
     const originalIntent =
@@ -403,7 +392,7 @@ export class ChatController {
       };
     } catch (error) {
       if (error.message === "Aborted") {
-        console.log("[ChatController] Process aborted by user");
+        this.debug.log("[ChatController] Process aborted by user");
         return null;
       }
       throw error;
@@ -412,7 +401,7 @@ export class ChatController {
 
   // Add method to extract query from email
   async extractEmailQuery(context) {
-    console.log("[ChatController] Extracting query from email");
+    this.debug.log("[ChatController] Extracting query from email");
 
     const prompt = `### Rolle ###
 Du bist ein KI-System-Analyst, der darauf spezialisiert ist, Nutzeranfragen in effiziente Suchabfragen für eine Wissensdatenbank (RAG-System) umzuwandeln. Du bist präzise, technisch und verstehst den Unterschied zwischen semantischer Suche und Keyword-Suche.
@@ -480,7 +469,7 @@ ${context.content || context.mainContent}
     // Process the two-line output
     const lines = cleanedResult.split("\n").filter((line) => line.trim());
 
-    console.log("[ChatController] Extracted lines:", lines);
+    this.debug.log("[ChatController] Extracted lines:", lines);
 
     if (lines.length >= 2) {
       // Get semantic query and keywords
@@ -490,12 +479,12 @@ ${context.content || context.mainContent}
       // Combine them for the search
       const combinedQuery = `${semanticQuery} ${keywords.replace(/,/g, " ")}`;
 
-      console.log("[ChatController] Final query:", combinedQuery);
+      this.debug.log("[ChatController] Final query:", combinedQuery);
 
       return combinedQuery;
     } else if (lines.length === 1) {
       // If we only got one line, use it as is
-      console.log("[ChatController] Single line query:", lines[0]);
+      this.debug.log("[ChatController] Single line query:", lines[0]);
       return lines[0].trim();
     } else {
       // Fallback: try to extract something meaningful from the original result
@@ -549,8 +538,11 @@ ${context.content || context.mainContent}
   }
 
   async searchDatanspeicher(query, folderId) {
-    console.log("[ChatController] Searching Datenspeicher with query:", query);
-    console.log("[ChatController] Using folder ID:", folderId);
+    this.debug.log(
+      "[ChatController] Searching Datenspeicher with query:",
+      query
+    );
+    this.debug.log("[ChatController] Using folder ID:", folderId);
 
     return await this.makeIsolatedQuery(query, "QA", folderId);
   }
@@ -592,7 +584,7 @@ ${context.content || context.mainContent}
     const isGmail =
       originalContext.emailProvider === "gmail" || originalContext.isGmail;
 
-    console.log("[ChatController] Email settings:", {
+    this.debug.log("[ChatController] Email settings:", {
       emailSenderName,
       hasHtmlSignature,
       isGmail,
@@ -687,7 +679,7 @@ ${emailSignature}`
       : "Keine Erklärungen, keine Metainformationen."
   } Nur der reine E-Mail-Text, den der Kunde erhalten soll.`;
 
-    console.log(
+    this.debug.log(
       "[ChatController] Email will have HTML signature:",
       hasHtmlSignature && isGmail
     );
@@ -702,10 +694,10 @@ ${emailSignature}`
   // In chat-controller.js, replace the entire sendMessage method (starts around line 490)
 
   async sendMessage(message, context = null, explicitIntent = null) {
-    console.log("[ChatController] === SENDING MESSAGE ===");
-    console.log("[ChatController] Text:", message);
-    console.log("[ChatController] Context:", context);
-    console.log("[ChatController] Explicit Intent:", explicitIntent);
+    this.debug.log("[ChatController] === SENDING MESSAGE ===");
+    this.debug.log("[ChatController] Text:", message);
+    this.debug.log("[ChatController] Context:", context);
+    this.debug.log("[ChatController] Explicit Intent:", explicitIntent);
 
     if (!this.isInitialized) {
       throw new Error("ChatController not initialized");
@@ -717,7 +709,7 @@ ${emailSignature}`
     // Preserve your variation override behavior (optional but useful)
     if (!explicitIntent && context?.isVariationRequest) {
       intent = "email-reply";
-      console.log(
+      this.debug.log(
         "[ChatController] Variation request detected, forcing email-reply intent"
       );
     }
@@ -725,7 +717,7 @@ ${emailSignature}`
     // Store the intent
     this.store.set("chat.currentIntent", intent);
     this.store.set("chat.lastUserIntent", intent);
-    console.log("[ChatController] Using intent:", intent);
+    this.debug.log("[ChatController] Using intent:", intent);
 
     // Generate session ID if needed
     if (!this.store.get("chat.sessionId")) {
@@ -752,7 +744,7 @@ ${emailSignature}`
       }
 
       finalContent = `${contextLabel}\n${contextContent}\n\n[Benutzer-Anfrage]\n${message}`;
-      this.log("Combined content length:", finalContent.length);
+      this.debug.log("Combined content length:", finalContent.length);
     }
 
     // Create user message
@@ -794,12 +786,12 @@ ${emailSignature}`
       // Determine mode based on whether we're using Datenspeicher
       const mode = selectedDataCollection ? "QA" : "BASIC";
 
-      console.log("[ChatController] Using mode:", mode);
-      console.log(
+      this.debug.log("[ChatController] Using mode:", mode);
+      this.debug.log(
         "[ChatController] Selected data collection:",
         selectedDataCollection
       );
-      console.log(
+      this.debug.log(
         "[ChatController] Data collections array:",
         selectedDataCollection ? [selectedDataCollection] : []
       );
@@ -829,20 +821,20 @@ ${emailSignature}`
         temperature: 0.2,
       };
 
-      console.log("[ChatController] === PAYLOAD DEBUG ===");
-      console.log("[ChatController] Mode:", chatPayload.selectedMode);
-      console.log(
+      this.debug.log("[ChatController] === PAYLOAD DEBUG ===");
+      this.debug.log("[ChatController] Mode:", chatPayload.selectedMode);
+      this.debug.log(
         "[ChatController] Data Collections:",
         chatPayload.selectedDataCollections
       );
-      console.log(
+      this.debug.log(
         "[ChatController] Payload message count:",
         chatPayload.messages.length
       );
 
       // Make chat API request
       const chatUrl = `https://${domain}.506.ai/api/qr/chat`;
-      this.log("Sending to chat API:", chatUrl);
+      this.debug.log("Sending to chat API:", chatUrl);
 
       const response = await this.makeAuthenticatedRequest(chatUrl, {
         method: "POST",
@@ -850,7 +842,7 @@ ${emailSignature}`
       });
 
       const responseText = await response.text();
-      this.log("Chat API response:", responseText);
+      this.debug.log("Chat API response:", responseText);
 
       // Parse response
       let assistantContent;
@@ -881,8 +873,8 @@ ${emailSignature}`
       ];
       this.store.set("chat.messages", updatedMessages);
 
-      console.log("[ChatController] Response added with mode:", mode);
-      this.log("Assistant response added to store");
+      this.debug.log("[ChatController] Response added with mode:", mode);
+      this.debug.log("Assistant response added to store");
 
       return assistantMessage;
     } catch (error) {
@@ -891,7 +883,7 @@ ${emailSignature}`
       // If the backend flagged this as a server-side availability issue,
       // add a fallback assistant message instead of reverting the user message.
       if (error.isServerError) {
-        console.log(
+        this.debug.log(
           "[ChatController] Server is unavailable, returning fallback message"
         );
 
@@ -931,12 +923,12 @@ ${emailSignature}`
    * Clear chat history
    */
   async clearChat() {
-    this.log("Clearing chat via store");
+    this.debug.log("Clearing chat via store");
 
     // Use store action
     this.store.actions.clearChat();
 
-    this.log("Chat cleared in store");
+    this.debug.log("Chat cleared in store");
   }
 
   /**
@@ -955,7 +947,7 @@ ${emailSignature}`
    * Handle streaming update from API
    */
   handleStreamingUpdate(data) {
-    this.log("Streaming update:", data);
+    this.debug.log("Streaming update:", data);
 
     // Emit update event for UI
     window.dispatchEvent(

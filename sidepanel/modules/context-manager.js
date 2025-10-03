@@ -2,6 +2,7 @@
 import { debounce } from "./utils.js";
 export class ContextManager {
   constructor(app) {
+    this.debug = window.Debug.create("context");
     this.app = app;
 
     // Use AppStore as single source of truth
@@ -30,7 +31,9 @@ export class ContextManager {
       ) {
         const oldUrl = this.store.get("context.url");
         if (oldUrl && oldUrl !== changeInfo.url) {
-          console.log("[ContextManager] Gmail URL changed, reloading context");
+          this.debug.log(
+            "[ContextManager] Gmail URL changed, reloading context"
+          );
           this.loadPageContext();
         }
       }
@@ -52,7 +55,7 @@ export class ContextManager {
     this.init();
   }
   setupStateSync() {
-    console.log("[ContextManager] Setting up state sync...");
+    this.debug.log("[ContextManager] Setting up state sync...");
 
     // Subscribe to context changes from store
     this.store.subscribe("context.isLoaded", (isLoaded) => {
@@ -67,14 +70,14 @@ export class ContextManager {
     // Subscribe to tab changes
     this.store.subscribe("tab.url", (url) => {
       if (url && url !== this.store.get("context.url")) {
-        console.log("[ContextManager] Tab URL changed via state:", url);
+        this.debug.log("[ContextManager] Tab URL changed via state:", url);
         this.onPageChange(url);
       }
     });
   }
 
   init() {
-    console.log("[ContextManager] Initializing...");
+    this.debug.log("[ContextManager] Initializing...");
 
     // Get UI elements
     this.loadButton = document.getElementById("load-context-btn");
@@ -88,7 +91,7 @@ export class ContextManager {
     // Monitor page changes
     this.monitorPageChanges();
 
-    console.log("[ContextManager] Initialization complete");
+    this.debug.log("[ContextManager] Initialization complete");
   }
 
   setupEventListeners() {
@@ -115,7 +118,7 @@ export class ContextManager {
         const contextUrl = this.store.get("context.url");
 
         if (contextUrl && currentUrl !== contextUrl) {
-          console.log("[ContextManager] Page changed:", currentUrl);
+          this.debug.log("[ContextManager] Page changed:", currentUrl);
 
           // USE DEBOUNCED VERSION INSTEAD
           // OLD: this.onPageChange(currentUrl);
@@ -129,7 +132,7 @@ export class ContextManager {
   debouncedOnPageChange = debounce((newUrl) => {
     // Ignore OAuth redirects and login URLs
     if (newUrl.includes("/login/") || newUrl.includes("?code=")) {
-      console.log("[ContextManager] Ignoring OAuth redirect URL");
+      this.debug.log("[ContextManager] Ignoring OAuth redirect URL");
       return;
     }
 
@@ -157,7 +160,7 @@ export class ContextManager {
 
     // Ignore OAuth redirects and login URLs
     if (newUrl.includes("/login/") || newUrl.includes("?code=")) {
-      console.log("[ContextManager] Ignoring OAuth redirect URL");
+      this.debug.log("[ContextManager] Ignoring OAuth redirect URL");
       return;
     }
 
@@ -180,11 +183,13 @@ export class ContextManager {
   async loadPageContext() {
     // Always clear old context first
     if (this.store.get("context.isLoaded")) {
-      console.log("[ContextManager] Clearing old context before loading new");
+      this.debug.log(
+        "[ContextManager] Clearing old context before loading new"
+      );
       this.clearContext();
     }
 
-    console.log("[ContextManager] Loading page context...");
+    this.debug.log("[ContextManager] Loading page context...");
 
     // Update UI state
     this.setButtonState("loading");
@@ -205,17 +210,20 @@ export class ContextManager {
       // Process the context
       const processedContext = this.processContext(context);
       // ADD THIS DEBUG LOG
-      console.log("[ContextManager] Processed context before store update:", {
-        isEmail: processedContext.isEmail,
-        isOutlook: processedContext.isOutlook,
-        emailProvider: processedContext.emailProvider,
-        isGmail: processedContext.isGmail,
-      });
+      this.debug.log(
+        "[ContextManager] Processed context before store update:",
+        {
+          isEmail: processedContext.isEmail,
+          isOutlook: processedContext.isOutlook,
+          emailProvider: processedContext.emailProvider,
+          isGmail: processedContext.isGmail,
+        }
+      );
 
       // Update store
       this.store.actions.setContext(processedContext);
 
-      console.log("[ContextManager] Store state after update:", {
+      this.debug.log("[ContextManager] Store state after update:", {
         isEmail: this.store.get("context.isEmail"),
         isOutlook: this.store.get("context.isOutlook"),
         emailProvider: this.store.get("context.emailProvider"),
@@ -225,7 +233,7 @@ export class ContextManager {
       // Update UI
       this.setButtonState("loaded");
 
-      console.log("[ContextManager] Context loaded successfully via store");
+      this.debug.log("[ContextManager] Context loaded successfully via store");
     } catch (error) {
       console.error("[ContextManager] Failed to load context:", error);
       this.setButtonState("error");
@@ -253,10 +261,10 @@ export class ContextManager {
         throw new Error("No active tab found");
       }
 
-      console.log("[ContextManager] Extracting from:", tab.url);
+      this.debug.log("[ContextManager] Extracting from:", tab.url);
 
       const strategy = await this.determineExtractionStrategy(tab);
-      console.log("[ContextManager] Using strategy:", strategy);
+      this.debug.log("[ContextManager] Using strategy:", strategy);
 
       let response;
 
@@ -291,7 +299,7 @@ export class ContextManager {
         response?.metadata?.needsApiExtraction ||
         response?.metadata?.needsExport
       ) {
-        console.log("[ContextManager] Content needs API enhancement");
+        this.debug.log("[ContextManager] Content needs API enhancement");
         response = await this.enhanceWithApiData(response);
       }
 
@@ -355,7 +363,7 @@ export class ContextManager {
           return "content-script";
         }
       } catch (e) {
-        console.log(
+        this.debug.log(
           "[ContextManager] Content script not responding, will inject"
         );
       }
@@ -366,17 +374,17 @@ export class ContextManager {
   }
 
   async extractViaContentScript(tabId) {
-    console.log("[ContextManager] Extracting via content script");
+    this.debug.log("[ContextManager] Extracting via content script");
 
     // Get model limit from store
-    const modelLimit = this.store.get("chat.model.maxLength") || 950000;
+    const modelLimit = this.store.get("chat.selectedModel.maxLength") || 190000;
 
     const response = await chrome.tabs.sendMessage(tabId, {
       action: "EXTRACT_CONTENT",
       options: {
         includeSelected: true,
-        maxLength: 10000, // Keep for backwards compatibility
-        modelLimit: modelLimit, // NEW: Pass model limit
+        maxLength: modelLimit, // Use model limit, not 10000
+        modelLimit: modelLimit,
       },
     });
 
@@ -395,7 +403,7 @@ export class ContextManager {
   }
 
   async extractViaInjection(tabId) {
-    console.log("[ContextManager] Extracting via injection");
+    this.debug.log("[ContextManager] Extracting via injection");
 
     // First check if content script is already there
     try {
@@ -403,7 +411,7 @@ export class ContextManager {
         action: "ping",
       });
       if (pingResponse && pingResponse.status === "ready") {
-        console.log(
+        this.debug.log(
           "[ContextManager] Content script already present, using it"
         );
         return await this.extractViaContentScript(tabId);
@@ -419,7 +427,7 @@ export class ContextManager {
         files: ["content/content-script.js"],
       });
 
-      console.log("[ContextManager] Content script injected");
+      this.debug.log("[ContextManager] Content script injected");
 
       // Wait for initialization
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -473,7 +481,7 @@ export class ContextManager {
   }
 
   processContext(rawContext) {
-    console.log("[ContextManager] Processing context:", rawContext);
+    this.debug.log("[ContextManager] Processing context:", rawContext);
 
     // Clean and process the text content
     let textContent = "";
@@ -562,7 +570,7 @@ export class ContextManager {
       summary: this.generateContentSummary(textContent),
     };
 
-    console.log("[ContextManager] Context processed:", {
+    this.debug.log("[ContextManager] Context processed:", {
       title: processedContext.title,
       domain: processedContext.domain,
       wordCount: processedContext.wordCount,
@@ -580,8 +588,8 @@ export class ContextManager {
   }
 
   async enhanceWithApiData(response) {
-    console.log("[ContextManager] Enhancing with API data");
-    console.log("[ContextManager] Metadata:", response.metadata);
+    this.debug.log("[ContextManager] Enhancing with API data");
+    this.debug.log("[ContextManager] Metadata:", response.metadata);
 
     // Handle SharePoint documents
     if (
@@ -589,7 +597,7 @@ export class ContextManager {
       response.metadata?.isDocument
     ) {
       try {
-        console.log("[ContextManager] Calling SharePoint extraction API");
+        this.debug.log("[ContextManager] Calling SharePoint extraction API");
 
         const docResponse = await chrome.runtime.sendMessage({
           type: "EXTRACT_SHAREPOINT_DOCUMENT",
@@ -601,7 +609,10 @@ export class ContextManager {
           },
         });
 
-        console.log("[ContextManager] SharePoint API response:", docResponse);
+        this.debug.log(
+          "[ContextManager] SharePoint API response:",
+          docResponse
+        );
 
         if (docResponse && docResponse.success) {
           response.mainContent = docResponse.content;
@@ -630,14 +641,14 @@ export class ContextManager {
     // Handle Google Docs export
     if (response.metadata?.docId && response.metadata?.needsExport) {
       try {
-        console.log("[ContextManager] Calling Google Docs export API");
+        this.debug.log("[ContextManager] Calling Google Docs export API");
 
         const exportResponse = await chrome.runtime.sendMessage({
           type: "EXTRACT_GOOGLE_DOCS",
           data: { docId: response.metadata.docId },
         });
 
-        console.log(
+        this.debug.log(
           "[ContextManager] Google Docs export response:",
           exportResponse
         );
@@ -813,7 +824,7 @@ export class ContextManager {
   }
 
   showEmailActions() {
-    console.log("[ContextManager] Showing email actions");
+    this.debug.log("[ContextManager] Showing email actions");
 
     // Get fresh references to buttons
     const buttons = document.querySelectorAll(".context-action-btn");
@@ -839,7 +850,7 @@ export class ContextManager {
   }
 
   showDocumentActions() {
-    console.log("[ContextManager] Showing document actions");
+    this.debug.log("[ContextManager] Showing document actions");
 
     // Get fresh references to buttons
     const buttons = document.querySelectorAll(".context-action-btn");
@@ -864,7 +875,7 @@ export class ContextManager {
   }
 
   clearContext() {
-    console.log("[ContextManager] Clearing context via store");
+    this.debug.log("[ContextManager] Clearing context via store");
 
     // Use store action to clear
     this.store.actions.clearContext();

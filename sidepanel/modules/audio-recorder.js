@@ -3,6 +3,7 @@ import { debounce } from "./utils.js";
 
 export class AudioRecorder {
   constructor(store) {
+    this.debug = window.Debug.create("audio");
     this.store = store;
 
     // Recording state
@@ -42,7 +43,7 @@ export class AudioRecorder {
     // Set initial state
     this.updateUI("idle");
 
-    console.log("[AudioRecorder] Initialized");
+    this.debug.log("[AudioRecorder] Initialized");
   }
 
   /**
@@ -52,14 +53,14 @@ export class AudioRecorder {
 
   async checkPermission() {
     try {
-      console.log("[AudioRecorder] Requesting microphone permission...");
+      this.debug.log("[AudioRecorder] Requesting microphone permission...");
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
       });
 
       stream.getTracks().forEach((track) => track.stop());
-      console.log("[AudioRecorder] Microphone permission granted");
+      this.debug.log("[AudioRecorder] Microphone permission granted");
       return true;
     } catch (error) {
       console.error("[AudioRecorder] Microphone permission error:", error);
@@ -91,7 +92,7 @@ export class AudioRecorder {
    */
 
   async startRecording() {
-    console.log("[AudioRecorder] Starting recording...");
+    this.debug.log("[AudioRecorder] Starting recording...");
 
     // Check permission first
     const hasPermission = await this.checkPermission();
@@ -136,7 +137,7 @@ export class AudioRecorder {
 
       // Set maximum duration timeout
       this.maxDurationTimeout = setTimeout(() => {
-        console.log("[AudioRecorder] Max duration reached, stopping...");
+        this.debug.log("[AudioRecorder] Max duration reached, stopping...");
         this.stopRecording();
       }, this.MAX_DURATION);
 
@@ -144,7 +145,7 @@ export class AudioRecorder {
       this.store.set("upload.recording.isRecording", true);
       this.store.set("upload.recording.startTime", this.startTime);
 
-      console.log("[AudioRecorder] Recording started");
+      this.debug.log("[AudioRecorder] Recording started");
       return true;
     } catch (error) {
       console.error("[AudioRecorder] Failed to start recording:", error);
@@ -178,7 +179,7 @@ export class AudioRecorder {
       /Chrome/.test(navigator.userAgent) &&
       /Google Inc/.test(navigator.vendor || "");
     if (isChrome) {
-      console.log("[AudioRecorder] Show Chrome permission instructions");
+      this.debug.log("[AudioRecorder] Show Chrome permission instructions");
       // Example (commented out): open microphone settings in a new tab
       // chrome.tabs?.create?.({ url: "chrome://settings/content/microphone" });
     }
@@ -188,7 +189,7 @@ export class AudioRecorder {
    * Stop recording
    */
   stopRecording() {
-    console.log("[AudioRecorder] Stopping recording...");
+    this.debug.log("[AudioRecorder] Stopping recording...");
 
     if (!this.mediaRecorder || this.mediaRecorder.state === "inactive") {
       console.warn("[AudioRecorder] Not recording");
@@ -213,7 +214,7 @@ export class AudioRecorder {
     // Update store
     this.store.set("upload.recording.isRecording", false);
 
-    console.log("[AudioRecorder] Recording stopped");
+    this.debug.log("[AudioRecorder] Recording stopped");
   }
 
   /**
@@ -228,7 +229,7 @@ export class AudioRecorder {
         (sum, chunk) => sum + chunk.size,
         0
       );
-      console.log(
+      this.debug.log(
         `[AudioRecorder] Chunk received, total size: ${(
           totalSize /
           1024 /
@@ -242,12 +243,12 @@ export class AudioRecorder {
    * Handle recording stop - create blob and convert to WAV
    */
   async handleStop() {
-    console.log("[AudioRecorder] Processing recording...");
+    this.debug.log("[AudioRecorder] Processing recording...");
 
     try {
       // Create WebM blob from chunks
       const webmBlob = new Blob(this.audioChunks, { type: "audio/webm" });
-      console.log(
+      this.debug.log(
         `[AudioRecorder] WebM blob created: ${(
           webmBlob.size /
           1024 /
@@ -257,7 +258,7 @@ export class AudioRecorder {
 
       // Convert to WAV
       const wavBlob = await this.convertToWav(webmBlob);
-      console.log(
+      this.debug.log(
         `[AudioRecorder] WAV blob created: ${(
           wavBlob.size /
           1024 /
@@ -279,7 +280,7 @@ export class AudioRecorder {
       // Update UI to review state
       this.updateUI("review");
 
-      console.log("[AudioRecorder] Recording processed successfully");
+      this.debug.log("[AudioRecorder] Recording processed successfully");
     } catch (error) {
       console.error("[AudioRecorder] Failed to process recording:", error);
       this.store.actions.showError(
@@ -293,7 +294,7 @@ export class AudioRecorder {
    * Convert WebM to WAV format
    */
   async convertToWav(webmBlob) {
-    console.log("[AudioRecorder] Converting WebM to WAV...");
+    this.debug.log("[AudioRecorder] Converting WebM to WAV...");
 
     try {
       // Create audio context
@@ -306,7 +307,7 @@ export class AudioRecorder {
       const arrayBuffer = await webmBlob.arrayBuffer();
       const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
-      console.log(
+      this.debug.log(
         `[AudioRecorder] Audio decoded: ${audioBuffer.duration}s, ${audioBuffer.sampleRate}Hz`
       );
 
@@ -434,7 +435,7 @@ export class AudioRecorder {
    * Update UI based on state
    */
   updateUI(state) {
-    console.log(`[AudioRecorder] UI state: ${state}`);
+    this.debug.log(`[AudioRecorder] UI state: ${state}`);
 
     switch (state) {
       case "idle":
@@ -510,7 +511,7 @@ export class AudioRecorder {
     this.store.set("upload.recording.audioUrl", null);
     this.store.set("upload.recording.duration", 0);
 
-    console.log("[AudioRecorder] Reset complete");
+    this.debug.log("[AudioRecorder] Reset complete");
   }
 
   /**
@@ -519,6 +520,6 @@ export class AudioRecorder {
   destroy() {
     this.stopRecording();
     this.reset();
-    console.log("[AudioRecorder] Destroyed");
+    this.debug.log("[AudioRecorder] Destroyed");
   }
 }

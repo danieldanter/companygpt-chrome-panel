@@ -2,10 +2,7 @@
 (function () {
   "use strict";
 
-  const DEBUG = false;
-  const debug = (...args) => {
-    if (DEBUG) console.log("[APIService]", ...args);
-  };
+  const debug = window.Debug.create("api");
 
   // Simple API request helper
   async function apiRequest(domain, endpoint, options = {}) {
@@ -48,7 +45,7 @@
       const domain = getCurrentDomain();
       if (!domain) throw new Error("No domain configured");
 
-      console.log(
+      debug.log(
         "[APIService] Fetching folders from:",
         `https://${domain}.506.ai/api/folders`
       );
@@ -67,7 +64,7 @@
         },
       });
 
-      console.log("[APIService] Folders response:", response);
+      debug.log("[APIService] Folders response:", response);
 
       if (!response?.success) {
         throw new Error(response?.error || "Failed to fetch folders");
@@ -167,8 +164,8 @@
       if (!domain) throw new Error("No domain configured");
 
       // Debug log
-      console.log("[APIService] Sending chat payload:", payload);
-      console.log("[APIService] Payload size:", JSON.stringify(payload).length);
+      debug.log("[APIService] Sending chat payload:", payload);
+      debug.log("[APIService] Payload size:", JSON.stringify(payload).length);
 
       // Make sure we're sending the payload correctly
       const response = await chrome.runtime.sendMessage({
