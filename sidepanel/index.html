@@ -297,8 +297,36 @@
           <div class="setting-label">Version</div>
           <div class="setting-value">1.0.0</div>
         </div>
-      </div>
+        <h3 style="margin-top: 20px">Email Konfiguration</h3>
 
+        <div class="setting-item">
+          <div class="setting-label">Absenden im Namen von</div>
+          <input
+            type="text"
+            id="email-sender-name"
+            class="setting-input"
+            placeholder="z.B. Max Mustermann, Support Team, Kundensupport"
+          />
+        </div>
+
+        <!-- Optional: Add signature field for future -->
+        <div class="setting-item">
+          <div class="setting-label">Email Signatur (optional)</div>
+          <textarea
+            id="email-signature"
+            placeholder="Z.B.:
+                    Max Mustermann
+                    Support Team
+                    506 Data & Performance GmbH
+
+                    Oder mit HTML:
+                    <b>Max Mustermann</b>
+                    <i>Support Team</i>
+                    506 Data & Performance GmbH"
+            rows="6"
+          ></textarea>
+        </div>
+      </div>
       <!-- Input Area -->
       <footer class="input-area">
         <!-- Context Bar (with integrated action cards) -->

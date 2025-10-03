@@ -310,15 +310,16 @@
       return formatted;
     }
 
-    async insertReply(content) {
-      console.log(`[EmailHandler] Inserting reply for ${this.provider}`);
+    async insertReply(content, isHtml = false) {
+      console.log(
+        `[EmailHandler] Inserting reply for ${this.provider}, HTML: ${isHtml}`
+      );
 
       if (this.provider === "outlook") {
-        return this.insertOutlookReply(content);
+        return this.insertOutlookReply(content, isHtml);
       }
-
       if (this.provider === "gmail") {
-        return this.insertGmailReply(content);
+        return this.insertGmailReply(content, isHtml); // Pass isHtml here
       }
 
       // Generic fallback
@@ -453,8 +454,11 @@
       }
     }
 
-    insertGmailReply(emailData) {
-      console.log("[EmailHandler] Starting Gmail insertion process...");
+    insertGmailReply(emailData, isHtml = false) {
+      console.log(
+        "[EmailHandler] Starting Gmail insertion process, HTML:",
+        isHtml
+      );
 
       // Click the reply button
       const replyButton =
@@ -494,14 +498,31 @@
               cleanedBody = cleanedBody.slice(1, -1);
             }
 
-            // Convert newlines to HTML breaks
-            cleanedBody = cleanedBody.replace(
-              /\n\n+/g,
-              "</div><div><br></div><div>"
-            );
-            cleanedBody = cleanedBody.replace(/\n/g, "</div><div>");
-            cleanedBody = "<div>" + cleanedBody + "</div>";
-            cleanedBody = cleanedBody.replace(/^(<div><\/div>)+/, "");
+            // Check if content already contains HTML tags
+            const hasHtmlTags = /<[^>]+>/.test(cleanedBody);
+
+            if (isHtml && hasHtmlTags) {
+              // Content has HTML - preserve it
+              console.log("[EmailHandler] Preserving HTML formatting");
+
+              // Convert newlines to <br> but preserve existing HTML
+              cleanedBody = cleanedBody.replace(/\n/g, "<br>");
+
+              // Wrap in div for Gmail
+              cleanedBody = `<div>${cleanedBody}</div>`;
+            } else {
+              // Original plain text handling
+              console.log("[EmailHandler] Converting to Gmail HTML format");
+
+              // Convert newlines to Gmail's div structure
+              cleanedBody = cleanedBody.replace(
+                /\n\n+/g,
+                "</div><div><br></div><div>"
+              );
+              cleanedBody = cleanedBody.replace(/\n/g, "</div><div>");
+              cleanedBody = "<div>" + cleanedBody + "</div>";
+              cleanedBody = cleanedBody.replace(/^(<div><\/div>)+/, "");
+            }
 
             // Set the HTML content
             composeBody.innerHTML = cleanedBody;
@@ -516,15 +537,28 @@
             }, 2000);
 
             console.log("[EmailHandler] ✓ Email reply insertion completed");
+            return {
+              success: true,
+              method: isHtml ? "html-insert" : "direct-insert",
+              message: "Email wurde eingefügt",
+            };
           } else {
             console.error("[EmailHandler] ✗ Could not find compose body");
+            return {
+              success: false,
+              error: "Compose body not found",
+            };
           }
         }, 1000);
       } else {
         console.error("[EmailHandler] ✗ Could not find reply button");
+        return {
+          success: false,
+          error: "Reply button not found",
+        };
       }
 
-      return { success: true, method: "direct-insert" };
+      return { success: true, method: "initiated" };
     }
   }
 
@@ -870,101 +904,87 @@
       };
     }
 
-    extractGeneric() {
-      console.log("[ContentExtractor] Extracting generic content...");
-      const selectedText = window.getSelection().toString();
-
-      // Use passed model limit or default
-      const modelLimit = this.modelLimit || 950000;
-
-      // Token to character ratio
-      const CHARS_PER_TOKEN = 4;
-
-      // Use 15% of model capacity for context
-      const CONTEXT_PERCENTAGE = 0.15;
-
-      // Calculate dynamic max length (cap at 100k chars)
-      const calculatedMax = Math.floor(
-        modelLimit * CHARS_PER_TOKEN * CONTEXT_PERCENTAGE
+    async generateEmailReply(originalContext, ragResults) {
+      // Get the configured sender name & signature
+      const configuredSenderName = this.store?.get?.(
+        "settings.emailConfig.senderName"
       );
-      const maxLength = Math.min(calculatedMax, 100000);
-
-      console.log(
-        `[ContentExtractor] Dynamic limit: ${maxLength} chars (model: ${modelLimit} tokens)`
+      const emailSignature = this.store?.get?.(
+        "settings.emailConfig.signature"
       );
 
-      // Try multiple strategies
-      let content = "";
+      // Extract sender name from the original email if possible
+      const emailLines = (originalContext.content || "").split("\n");
+      const detectedSenderName = this.extractSenderName(emailLines);
 
-      // Strategy 1: Look for main content areas
-      try {
-        const selectorStr = this?.siteConfig?.selectors?.content || "";
-        const contentSelectors = selectorStr ? selectorStr.split(", ") : [];
-        for (const selector of contentSelectors) {
-          const element = document.querySelector(selector);
-          if (element && element.innerText && element.innerText.length > 100) {
-            content = element.innerText;
-            break;
-          }
-        }
-      } catch (e) {
-        console.warn(
-          "[ContentExtractor] Error reading siteConfig selectors:",
-          e
-        );
+      // Determine greeting instruction
+      let greetingInstruction = "";
+      if (detectedSenderName) {
+        greetingInstruction = `Verwende "${detectedSenderName}" in der Anrede.`;
+      } else {
+        greetingInstruction =
+          'Verwende eine allgemeine Anrede wie "Sehr geehrte Damen und Herren" oder "Guten Tag".';
       }
 
-      // Strategy 2: Get largest text block if no main content found
-      if (!content) {
-        const allTextBlocks = document.querySelectorAll(
-          "div, section, article"
-        );
-        let largestBlock = "";
-        let largestLength = 0;
-
-        allTextBlocks.forEach((block) => {
-          const text = block.innerText || "";
-          // avoid absurdly large nodes; prefer the largest reasonable chunk
-          if (text.length > largestLength && text.length < 50000) {
-            largestLength = text.length;
-            largestBlock = text;
-          }
-        });
-
-        content = largestBlock;
+      // Determine signature instruction (signature overrides plain name if both exist)
+      let signatureInstruction = "";
+      if (configuredSenderName) {
+        signatureInstruction = `Unterschreibe die Email mit "${configuredSenderName}".`;
+      }
+      if (emailSignature) {
+        signatureInstruction = `Beende die Email mit folgender Signatur:\n${emailSignature}`;
       }
 
-      // Strategy 3: Fallback to body text
-      if (!content || content.length < 100) {
-        content = document.body.innerText || "";
-      }
+      const prompt = `### Rolle
+  Du bist ein Experte für professionelle schriftliche Kommunikation. Deine Stärke liegt darin, gegebene Informationen in klare, präzise und freundliche E-Mail-Antworten umzuwandeln. Du agierst stets souverän, kompetent und direkt im Namen des Absenders.
+  Du kommunizierst klar, professionell und direkt.
 
-      // Optional light cleanup
-      if (content) {
-        // collapse excessive whitespace while preserving paragraphs
-        content = content
-          .replace(/\r/g, "")
-          .replace(/\n{3,}/g, "\n\n")
-          .trim();
-      }
+  ### Spezielle Anweisungen
+  ${greetingInstruction}
+  ${signatureInstruction}
 
-      // Truncate if too long using the dynamic limit
-      if (content.length > maxLength) {
-        content =
-          content.substring(0, maxLength) + "\n\n[... Content truncated ...]";
-      }
+  ### Aufgabe
+  Deine primäre Aufgabe ist es, eine E-Mail-Anfrage eines Kunden fokussiert und präzise zu beantworten. Deine Antwort soll gezielt das Problem des Kunden lösen oder seine Frage beantworten, ohne unnötige Zusatzinformationen zu liefern.
 
-      return {
-        content,
-        selectedText,
-        metadata: {
-          method: "generic-extraction",
-          contentLength: content.length,
-          hasSelectedText: !!selectedText,
-          modelLimit,
-          maxLength,
-        },
-      };
+  ### Dir bereitgestellte Informationen
+  **Kunden-E-Mail:** 
+  ${originalContext.content || originalContext.mainContent}
+
+  **Wissensdatenbank-Auszug:** 
+  ${ragResults}
+
+  ### Verhaltensanweisungen & Regeln
+  1. **Verinnerliche das Wissen**: Behandle die Informationen aus dem Wissensdatenbank-Auszug so, als wären es deine eigenen, langjährigen Kenntnisse. Du bist der Experte.
+
+  2. **Verbot von Quellenangaben**: Es ist absolut entscheidend, dass du niemals erwähnst, dass du Informationen erhalten hast. Du darfst nicht auf den "Wissensdatenbank-Auszug", "die Dokumente" oder "bereitgestellte Informationen" verweisen.
+
+  3. **Fokus und Relevanz**:
+    - Identifiziere die zentrale Frage in der Kunden-E-Mail
+    - Wähle aus dem Wissensdatenbank-Auszug nur die Informationen aus, die zur Beantwortung dieser spezifischen Frage absolut notwendig sind
+    - Antworte so ausführlich wie nötig, aber so kurz und prägnant wie möglich
+    - Dein Ziel ist es, dem Kunden schnell und effizient zu helfen, nicht, ihm dein gesamtes Wissen zu zeigen
+    - Beispiel: Wenn die Wissensdatenbank 8 mögliche Fehlercodes auflistet, der Kunde aber nur nach dem Problem mit dem Dateiformat fragt, dann erwähne nur den relevanten Fehlercode (z.B. 415 - Nicht unterstützter Dateityp) und lasse die anderen 7 weg
+
+  4. **Vermeide verräterische Phrasen**:
+    FALSCH: "Die von Ihnen genannten Informationen zeigen, dass..."
+    FALSCH: "Laut den Dokumenten wird WEBM nicht unterstützt."
+    FALSCH: "Ich habe nachgesehen und festgestellt, dass..."
+    FALSCH: "Basierend auf den vorliegenden Informationen..."
+    
+    RICHTIG: "Das Dateiformat WEBM wird für diesen Endpunkt leider nicht unterstützt."
+    RICHTIG: "Aktuell können Sie Videos im MP4-Format hochladen."
+    RICHTIG: "Der Fehlercode 415 bedeutet, dass das Dateiformat nicht unterstützt wird."
+
+  5. **Struktur der Antwort**:
+    - Verfasse eine vollständige E-Mail
+    - Beginne mit einer freundlichen und passenden Anrede
+    - Schreibe den Hauptteil deiner Antwort
+    - Beende die E-Mail mit einer professionellen Grußformel
+
+  ### Ausgabe
+  Schreibe NUR die fertige E-Mail-Antwort. Keine Erklärungen, keine Metainformationen, keine Kommentare - nur der reine E-Mail-Text, den der Kunde erhalten soll.`;
+
+      return await this.makeIsolatedQuery(prompt, "BASIC");
     }
 
     setupMessageListener() {

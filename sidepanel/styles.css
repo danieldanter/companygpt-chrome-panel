@@ -295,6 +295,44 @@ body {
   color: var(--text-secondary);
 }
 
+/* Email Configuration Inputs */
+.setting-input {
+  flex: 1;
+  max-width: 300px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-s);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.setting-input:focus {
+  border-color: var(--blue-500);
+}
+
+.setting-textarea {
+  width: 100%;
+  max-width: 400px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-s);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  resize: vertical;
+  transition: border-color 0.15s ease;
+  margin-top: 8px;
+}
+
+.setting-textarea:focus {
+  border-color: var(--blue-500);
+}
+
 /* Toggle */
 .toggle {
   position: relative;

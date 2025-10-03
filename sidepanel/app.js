@@ -323,7 +323,6 @@ class CompanyGPTChat {
 
   async openFolderSelector() {
     console.log("[App] Opening upload folder selector");
-
     const button = document.getElementById("upload-folder-select");
     if (!button) return;
 
@@ -331,7 +330,6 @@ class CompanyGPTChat {
     let dropdown = button.parentElement.querySelector(
       ".datenspeicher-dropdown"
     );
-
     if (!dropdown) {
       dropdown = document.createElement("div");
       dropdown.className = "datenspeicher-dropdown";
@@ -349,9 +347,12 @@ class CompanyGPTChat {
     if (dropdown.classList.contains("show")) {
       const list = dropdown.querySelector(".dropdown-list");
 
-      // === REPLACED SECTION: load folders via APIService and filter MEDIA ===
       try {
-        const folders = await window.APIService.fetchFolders();
+        const data = await window.APIService.fetchFolders();
+
+        // FIX: Extract folders from the data object
+        const folders = data?.folders || [];
+
         console.log("[App] Folders loaded:", folders.length);
 
         if (folders.length > 0) {
@@ -378,7 +379,6 @@ class CompanyGPTChat {
         console.error("[App] Failed to load folders:", error);
         list.innerHTML = '<div class="dropdown-error">Fehler beim Laden</div>';
       }
-      // === END REPLACED SECTION ===
 
       // Simple click handler
       list.onclick = (e) => {
@@ -398,7 +398,6 @@ class CompanyGPTChat {
 
         // Close dropdown
         dropdown.classList.remove("show");
-
         console.log("[App] Selected:", folderName, folderId);
       };
     }
@@ -636,6 +635,32 @@ class CompanyGPTChat {
         }
       }
     });
+
+    // Email configuration inputs
+    const emailSenderInput = document.getElementById("email-sender-name");
+    const emailSignatureInput = document.getElementById("email-signature");
+
+    // Load saved values
+    emailSenderInput.value =
+      this.store.get("settings.emailConfig.senderName") || "";
+    emailSignatureInput.value =
+      this.store.get("settings.emailConfig.signature") || "";
+
+    // Save on change with debouncing
+    const saveEmailConfig = debounce(() => {
+      this.store.set("settings.emailConfig.senderName", emailSenderInput.value);
+      this.store.set(
+        "settings.emailConfig.signature",
+        emailSignatureInput.value
+      );
+      console.log("[App] Email config saved:", {
+        senderName: emailSenderInput.value,
+        signature: emailSignatureInput.value,
+      });
+    }, 500);
+
+    emailSenderInput?.addEventListener("input", saveEmailConfig);
+    emailSignatureInput?.addEventListener("input", saveEmailConfig);
 
     // Listen for Datenspeicher selection
     window.addEventListener("datenspeicher-selected", (e) => {
@@ -1383,6 +1408,7 @@ class CompanyGPTChat {
     });
   }
 
+  // Change this method from handleGmailReply to handleEmailReply
   // Change this method from handleGmailReply to handleEmailReply
   async handleEmailReply(content) {
     console.log("[App] Handling email reply");

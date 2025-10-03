@@ -95,6 +95,11 @@
       enableNotifications: true,
       autoLoadContext: false,
       debugMode: false,
+      emailConfig: {
+        senderName: "", // e.g., "Max Mustermann"
+        senderRole: "", // e.g., "Support Team"
+        signature: "", // For future: full signature text
+      },
     },
 
     // Tab/Page Info

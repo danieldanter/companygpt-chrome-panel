@@ -296,16 +296,12 @@ export class ChatController {
       this.analysisMessage.showQueryBubble(step1El, extractedQuery);
 
       // Complete step 1 with results
-      this.analysisMessage.completeStep(
-        1,
-        "Email analysiert",
-        `Suchanfrage: "${extractedQuery}"`
-      );
+      this.analysisMessage.completeStep(1, "Email analysiert", extractedQuery);
 
       // Track process data
       processData.steps.push({
         text: "Email analysiert",
-        detail: `Suchanfrage: "${extractedQuery}"`,
+        detail: extractedQuery,
       });
 
       // Small delay before next step for visual clarity
@@ -415,20 +411,94 @@ export class ChatController {
   async extractEmailQuery(context) {
     console.log("[ChatController] Extracting query from email");
 
-    const prompt = `Analysiere diese Email und extrahiere die Suchbegriffe.
-  Formuliere eine präzise Suchanfrage mit den wichtigsten Begriffen.
-  Verbinde mehrere Themen mit "UND".
-  Antworte NUR mit der Suchanfrage, keine Erklärung.
+    const prompt = `### Rolle ###
+Du bist ein KI-System-Analyst, der darauf spezialisiert ist, Nutzeranfragen in effiziente Suchabfragen für eine Wissensdatenbank (RAG-System) umzuwandeln. Du bist präzise, technisch und verstehst den Unterschied zwischen semantischer Suche und Keyword-Suche.
 
-  Beispiel: "Öffnungszeiten Sonntag UND Probetraining"
+### Aufgabe ###
+Deine Aufgabe ist es, eine E-Mail-Anfrage zu analysieren und daraus eine klar strukturierte Textausgabe zu generieren, die eine optimale Abfrage für ein duales Suchsystem (semantisch + Keyword) darstellt.
 
-    Email:
-    ${context.content || context.mainContent}
-    
-    Suchanfrage:`;
+### Analyseprozess ###
+1. **Identifiziere die Kernabsicht:** Was ist die zentrale Frage oder das Hauptproblem des Nutzers? Ignoriere Füllwörter und Höflichkeitsfloskeln.
+2. **Formuliere eine semantische Abfrage:** Formuliere aus der Kernabsicht eine klare, prägnante Frage oder eine kurze Aussage. Diese Abfrage wird für eine Vektor- bzw. Ähnlichkeitssuche verwendet. Sie sollte den Sinn der Anfrage erfassen.
+3. **Extrahiere kritische Keywords:** Identifiziere die 3-5 wichtigsten Substantive, technischen Begriffe, Eigennamen oder Entitäten aus der E-Mail.
+4. **Normalisiere die Keywords:** Wandle die extrahierten Begriffe in ihre Grundform oder eine kanonische Form um (z.B. Singular statt Plural, englische Fachbegriffe, falls üblich).
+
+### Ausgabeformat ###
+Deine Ausgabe muss **ausschließlich** aus **exakt zwei Zeilen** bestehen.
+- **Zeile 1:** Enthält die für die semantische Suche optimierte Frage oder Aussage.
+- **Zeile 2:** Enthält eine kommagetrennte Liste der normalisierten Keywords (ohne Leerzeichen nach dem Komma).
+
+Füge keine weiteren Erklärungen, Titel oder leere Zeilen vor, zwischen oder nach den beiden Zeilen hinzu.
+
+### Beispiele ###
+**Beispiel 1:**
+**E-Mail-Input:**
+"""
+hallo
+ich verwende den upload media endpunkt und versuche viele dateien upzuloaden
+mir ist allerdings aufgefallen, dass es anscheinend ein bestimmtes rate limit gibt
+wie hoch ist dieses aktuell?
+"""
+
+**Dein Text-Output:**
+Wie hoch ist das Rate Limit für den Upload Media Endpunkt?
+upload media,endpoint,rate limit,limit,beschränkung
+
+**Beispiel 2:**
+**E-Mail-Input:**
+"""
+Servus, ich hab ein Problem mit dem Login. Immer wenn ich versuche, mich mit meinem Google Account anzumelden, kriege ich einen 401-Fehler. Woran kann das liegen?
+"""
+
+**Dein Text-Output:**
+Fehlerursachen für 401-Fehler beim Google-Login
+login,google account,anmeldung,401,authentifizierung
+
+### E-Mail-Input ###
+"""
+${context.content || context.mainContent}
+"""
+
+### Dein Text-Output ###`;
 
     const result = await this.makeIsolatedQuery(prompt, "BASIC");
-    return result.replace(/^["']|["']$/g, "").trim();
+
+    // Clean up the result
+    let cleanedResult = result
+      .replace(/^["']|["']$/g, "") // Remove surrounding quotes
+      .replace(/\\n/g, "\n") // Replace literal \n with actual newlines
+      .replace(/^Suchanfrage:\s*/i, "") // Remove "Suchanfrage:" prefix if present
+      .replace(/^"Suchanfrage:\s*/i, "") // Remove quoted "Suchanfrage:" prefix
+      .trim();
+
+    // Remove any duplicate "Suchanfrage:" patterns
+    cleanedResult = cleanedResult.replace(/^Suchanfrage:\s*/gi, "");
+
+    // Process the two-line output
+    const lines = cleanedResult.split("\n").filter((line) => line.trim());
+
+    console.log("[ChatController] Extracted lines:", lines);
+
+    if (lines.length >= 2) {
+      // Get semantic query and keywords
+      const semanticQuery = lines[0].trim();
+      const keywords = lines[1].trim();
+
+      // Combine them for the search
+      const combinedQuery = `${semanticQuery} ${keywords.replace(/,/g, " ")}`;
+
+      console.log("[ChatController] Final query:", combinedQuery);
+
+      return combinedQuery;
+    } else if (lines.length === 1) {
+      // If we only got one line, use it as is
+      console.log("[ChatController] Single line query:", lines[0]);
+      return lines[0].trim();
+    } else {
+      // Fallback: try to extract something meaningful from the original result
+      console.warn("[ChatController] Unexpected format, using cleaned result");
+      return cleanedResult || "Datenspeicher Suche";
+    }
   }
 
   async makeIsolatedQuery(content, mode = "BASIC", folderId = null) {
@@ -503,37 +573,121 @@ export class ChatController {
     return null;
   }
 
-  // Add method to generate email reply
   async generateEmailReply(originalContext, ragResults) {
     // Extract sender name if possible
     const emailLines = (originalContext.content || "").split("\n");
-    const senderName = this.extractSenderName(emailLines); // Helper method
+    const senderName = this.extractSenderName(emailLines);
 
-    const prompt = `Du bist ein hilfsbereiter Support-Mitarbeiter.
+    // Get email settings - with correct paths
+    const emailSenderName =
+      this.store.get("settings.emailConfig.senderName") || "";
+    const emailSignature =
+      this.store.get("settings.emailConfig.signature") || "";
 
-  KONTEXT: ${ragResults}
+    // Check if signature contains HTML
+    const hasHtmlSignature = /<[^>]+>/.test(emailSignature);
+    const isGmail =
+      originalContext.emailProvider === "gmail" || originalContext.isGmail;
 
-  EMAIL VON KUNDE: ${originalContext.content || originalContext.mainContent}
+    console.log("[ChatController] Email settings:", {
+      emailSenderName,
+      hasHtmlSignature,
+      isGmail,
+    });
 
-  Aufgabe: Verfasse eine professionelle Email-Antwort.
+    let signatureInstructions = "";
+    if (emailSenderName || emailSignature) {
+      if (hasHtmlSignature && isGmail) {
+        // HTML signature for Gmail
+        signatureInstructions = `
+  
+  **WICHTIGE SIGNATUR-ANWEISUNGEN:**
+  ${
+    emailSenderName ? `- Unterschreibe die Email mit: "${emailSenderName}"` : ""
+  }
+  - Füge NACH "Mit freundlichen Grüßen" diese HTML-formatierte Signatur EXAKT so ein:
+${emailSignature}
+  - WICHTIG: Behalte ALLE HTML-Tags (<b>, <i>, <br>, <a href="">) genau bei!
+  - Die Signatur muss als HTML-Code erhalten bleiben, nicht als Text interpretiert werden`;
+      } else {
+        // Plain text signature
+        signatureInstructions = `
+  
+  **WICHTIGE SIGNATUR-ANWEISUNGEN:**
+  ${
+    emailSenderName ? `- Unterschreibe die Email mit: "${emailSenderName}"` : ""
+  }
+  ${
+    emailSignature
+      ? `- Füge NACH "Mit freundlichen Grüßen" und dem Namen diese Signatur ein:
+${emailSignature}`
+      : ""
+  }`;
+      }
+    }
 
-  KRITISCHE REGELN:
-  1. Schreibe DIREKT die Antwort, ohne zu erwähnen woher die Info kommt
-  2. VERMEIDE Phrasen wie:
-    - "Basierend auf den vorliegenden Informationen..."
-    - "Laut unseren Unterlagen..."
-    - "Ich habe nachgeschaut und..."
-    - "Die Dokumente zeigen..."
-    
-  3. STATTDESSEN schreibe natürlich:
-    - "Die Upload-Funktion unterstützt mp4-Format"
-    - "Sie können maximal 3000 Chunks pro Request senden"
-    - "Der Fehlercode 415 bedeutet, dass..."
+    const prompt = `### Rolle
+  Du bist ein Experte für professionelle schriftliche Kommunikation. Deine Stärke liegt darin, gegebene Informationen in klare, präzise und freundliche E-Mail-Antworten umzuwandeln. Du agierst stets souverän, kompetent und direkt im Namen des Absenders.
+  Du kommunizierst klar, professionell und direkt.
+  
+  ### Aufgabe
+  Deine primäre Aufgabe ist es, eine E-Mail-Anfrage eines Kunden fokussiert und präzise zu beantworten. Deine Antwort soll gezielt das Problem des Kunden lösen oder seine Frage beantworten, ohne unnötige Zusatzinformationen zu liefern.
+  
+  ### Dir bereitgestellte Informationen
+  **Kunden-E-Mail:** 
+  ${originalContext.content || originalContext.mainContent}
+  
+  **Wissensdatenbank-Auszug:** 
+  ${ragResults}
+  ${signatureInstructions}
+  
+  ### Verhaltensanweisungen & Regeln
+  1. **Verinnerliche das Wissen**: Behandle die Informationen aus dem Wissensdatenbank-Auszug so, als wären es deine eigenen, langjährigen Kenntnisse. Du bist der Experte.
+  
+  2. **Verbot von Quellenangaben**: Es ist absolut entscheidend, dass du niemals erwähnst, dass du Informationen erhalten hast. Du darfst nicht auf den "Wissensdatenbank-Auszug", "die Dokumente" oder "bereitgestellte Informationen" verweisen.
+  
+  3. **Fokus und Relevanz**:
+    - Identifiziere die zentrale Frage in der Kunden-E-Mail
+    - Wähle aus dem Wissensdatenbank-Auszug nur die Informationen aus, die zur Beantwortung dieser spezifischen Frage absolut notwendig sind
+    - Antworte so ausführlich wie nötig, aber so kurz und prägnant wie möglich
+    - Dein Ziel ist es, dem Kunden schnell und effizient zu helfen, nicht, ihm dein gesamtes Wissen zu zeigen
+  
+  4. **Vermeide verräterische Phrasen**:
+    FALSCH: "Die von Ihnen genannten Informationen zeigen, dass..."
+    FALSCH: "Laut den Dokumenten wird WEBM nicht unterstützt."
+    RICHTIG: "Das Dateiformat WEBM wird für diesen Endpunkt leider nicht unterstützt."
+  
+  5. **Struktur der Antwort**:
+    - Verfasse eine vollständige E-Mail
+    - Beginne mit einer freundlichen und passenden Anrede${
+      senderName
+        ? ` (verwende "${senderName}" falls passend)`
+        : ' (z.B. "Sehr geehrte/r Herr/Frau [Nachname]," oder "Guten Tag,")'
+    }
+    - Schreibe den Hauptteil deiner Antwort
+    - Beende die E-Mail mit "Mit freundlichen Grüßen"
+    ${
+      emailSenderName
+        ? `- Unterschreibe direkt nach der Grußformel mit: ${emailSenderName}`
+        : ""
+    }
+    ${
+      hasHtmlSignature && isGmail
+        ? "- Die HTML-Signatur MUSS mit allen Tags erhalten bleiben!"
+        : ""
+    }
+  
+  ### Ausgabe
+  Schreibe NUR die fertige E-Mail-Antwort. ${
+    hasHtmlSignature && isGmail
+      ? "Behalte HTML-Formatierung bei wo angegeben."
+      : "Keine Erklärungen, keine Metainformationen."
+  } Nur der reine E-Mail-Text, den der Kunde erhalten soll.`;
 
-  4. Struktur:
-    - Gehe direkt auf die Fragen ein
-
-  Email-Antwort (NUR der Email-Text, keine Erklärungen):`;
+    console.log(
+      "[ChatController] Email will have HTML signature:",
+      hasHtmlSignature && isGmail
+    );
 
     return await this.makeIsolatedQuery(prompt, "BASIC");
   }
